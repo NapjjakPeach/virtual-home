@@ -40,6 +40,14 @@ hls=cv2.cvtColor(wood.astype(np.uint8),cv2.COLOR_BGR2HLS).astype(np.float32); hl
 wood=cv2.cvtColor(hls.astype(np.uint8),cv2.COLOR_HLS2BGR).astype(np.float32)
 # 판이 X축 방향이 되도록 (d1 방향 = 이미지 가로)
 cv2.imwrite(out+'/wood.jpg',wood,[cv2.IMWRITE_JPEG_QUALITY,86])
+# 마루 노멀맵: 밝기를 높이로 보고 기울기로 요철 계산 (이음선은 홈으로)
+gh=cv2.cvtColor(np.clip(wood,0,255).astype(np.uint8),cv2.COLOR_BGR2GRAY).astype(np.float32)/255
+gh=cv2.GaussianBlur(gh,(0,0),1.0)
+S=5.0
+dx=(np.roll(gh,-1,1)-np.roll(gh,1,1))*S; dy=(np.roll(gh,-1,0)-np.roll(gh,1,0))*S
+nz=np.ones_like(gh); nl=np.sqrt(dx*dx+dy*dy+nz*nz)
+nmap=np.dstack([nz/nl,dy/nl,-dx/nl])*0.5+0.5   # BGR = (z, y, x)
+cv2.imwrite(out+'/wood_n.jpg',(nmap*255).astype(np.uint8),[cv2.IMWRITE_JPEG_QUALITY,92])
 res['woodMean']=[int(v) for v in target[::-1]]
 # 2) 벽지: 54.0s 거실 벽의 평평한 부분 → 밝기 정규화한 결이 있는 흰색
 f=frame(54.0)
