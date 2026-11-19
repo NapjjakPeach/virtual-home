@@ -1,0 +1,5 @@
+# 원본 자료는 저장소에 올리지 않음 (사이트에 필요한 건 docs/ 안에 있음)
+*.dwg
+*.dxf
+KakaoTalk_*.mp4
+.claude/
