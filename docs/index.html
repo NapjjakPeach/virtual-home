@@ -1095,20 +1095,35 @@ function setMode(mode) {
   if (mode === 'top') { orbit.tx = me.x * .3; orbit.tz = me.z * .3; }
   if (mode === 'walk' && furnSel) selectFurn(null);   // 가구는 가구 배치 모드에서만 고친다
   const hint = $('#hint');
-  if (hint) hint.innerHTML = mode === 'walk' ? '드래그 둘러보기 · <kbd>W A S D</kbd> 이동 · <kbd>Shift</kbd> 빠르게 · 바닥 클릭하면 그곳으로 걸어가요' : '가구를 눌러 고른 뒤 끌어서 옮겨요 · <kbd>방향키</kbd> 10mm · <kbd>Shift</kbd>+방향키 100mm · <kbd>R</kbd> 회전';
+  if (hint) hint.innerHTML = mode === 'walk' ? '드래그 둘러보기 · <kbd>W A S D</kbd> 이동 · <kbd>Shift</kbd> 빠르게 · 바닥 클릭하면 그곳으로 걸어가요' : '가구를 눌러 고른 뒤 끌어서 옮겨요 · <kbd>방향키</kbd> 10mm · <kbd>Shift</kbd>+방향키 100mm · <kbd>R</kbd> 회전 · <kbd>휠 드래그</kbd> 화면 이동';
 }
 $('#modeWalk').onclick = () => setMode('walk');
 $('#modeTop').onclick = () => setMode('top');
 
 const ptrs = new Map(); let drag = null, pinch0 = 0;
+// 가구 배치(평면) 모드: 휠 버튼을 누른 채 끌면 화면 이동 (커서 아래 바닥이 따라오는 CAD 방식)
+let pan = null;
+const panFloor = (cx, cy) => rayAt(cx, cy).ray.intersectPlane(floorPlane, new THREE.Vector3());
+canvas.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });   // 휠 클릭 자동 스크롤 막기
+canvas.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
 canvas.addEventListener('pointerdown', e => {
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (e.button === 1 && state.mode === 'top') { e.preventDefault(); pan = { pid: e.pointerId, x: e.clientX, y: e.clientY }; canvas.style.cursor = 'move'; return; }
   if (toolPointerDown(e)) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) drag = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); drag && (drag.moved = 99); }
 });
 canvas.addEventListener('pointermove', e => {
+  if (pan && e.pointerId === pan.pid) {
+    const a = panFloor(pan.x, pan.y), b = panFloor(e.clientX, e.clientY);
+    if (a && b && bounds) {
+      orbit.tx = clamp(orbit.tx + a.x - b.x, bounds.x0 - 3, bounds.x1 + 3);
+      orbit.tz = clamp(orbit.tz + a.z - b.z, bounds.z0 - 3, bounds.z1 + 3);
+    }
+    pan.x = e.clientX; pan.y = e.clientY;
+    return;
+  }
   if (toolPointerMove(e)) return;
   if (!ptrs.has(e.pointerId)) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1124,6 +1139,7 @@ canvas.addEventListener('pointermove', e => {
   else { orbit.az -= dx * .006; orbit.pol = clamp(orbit.pol - dy * .005, .12, 1.45); }
 });
 const endPtr = e => {
+  if (pan && e.pointerId === pan.pid) { pan = null; canvas.style.cursor = tool ? 'crosshair' : ''; return; }
   if (toolPointerUp(e)) return;
   ptrs.delete(e.pointerId);
   if (drag && ptrs.size === 0) {
@@ -2749,7 +2765,7 @@ function setupSun() {
 
 room = createRoom();
 if (room) attachBoard(room);
-if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, findPath, walkTo, roomSpot, W, P, get model() { return model; } };   // 테스트용 (?debug일 때만)
+if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, get model() { return model; } };   // 테스트용 (?debug일 때만)
 if (!room) { connState = 'solo'; setConn('solo'); renderPeople(); }
 else {
   connState = 'wait'; setConn('wait');
