@@ -278,7 +278,7 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
 
   <div class="card bar" id="selbar" hidden>
     <b id="selName"></b><span class="mono" id="selDims"></span><span class="stat" id="selStat"></span>
-    <span class="nudge" id="selNudge" aria-label="10mm씩 옮기기"><button data-k="ArrowLeft" aria-label="왼쪽으로 10mm">←</button><button data-k="ArrowUp" aria-label="앞으로 10mm">↑</button><button data-k="ArrowDown" aria-label="뒤로 10mm">↓</button><button data-k="ArrowRight" aria-label="오른쪽으로 10mm">→</button></span><button id="selLamp" hidden>불 끄기</button><button id="selRot" title="R 키 (Shift+R은 15°)">90° 회전</button><button id="selDup">복제</button><button id="selEdit">치수</button><button id="selDel" title="Delete 키">삭제</button><button id="selClose" aria-label="선택 해제">×</button>
+    <span class="nudge" id="selNudge" aria-label="10mm씩 옮기기"><button data-k="ArrowLeft" aria-label="왼쪽으로 10mm">←</button><button data-k="ArrowUp" aria-label="앞으로 10mm">↑</button><button data-k="ArrowDown" aria-label="뒤로 10mm">↓</button><button data-k="ArrowRight" aria-label="오른쪽으로 10mm">→</button></span><button id="selLamp" hidden>불 끄기</button><button id="selRot" title="R 키 (Shift+R은 15°)">90° 회전</button><button id="selRot45" title="Q 키 · 다음 45° 칸으로 돌려요">45°</button><button id="selDup">복제</button><button id="selEdit">치수</button><button id="selDel" title="Delete 키">삭제</button><button id="selClose" aria-label="선택 해제">×</button>
   </div>
   <div class="card bar" id="toolbar2" hidden>
     <span id="toolMsg"></span><button id="toolClear">줄자 지우기</button><button id="toolDone">끝내기</button>
@@ -1218,7 +1218,7 @@ function setMode(mode) {
   if (mode === 'top') { orbit.tx = me.x * .3; orbit.tz = me.z * .3; }
   if (mode === 'walk' && furnSel) selectFurn(null);   // 가구는 가구 배치 모드에서만 고친다
   const hint = $('#hint');
-  if (hint) hint.innerHTML = mode === 'walk' ? '드래그 둘러보기 · <kbd>W A S D</kbd> 이동 · <kbd>Shift</kbd> 빠르게 · 바닥 클릭하면 그곳으로 걸어가요' : '가구를 눌러 고른 뒤 끌어서 옮겨요 · <kbd>방향키</kbd> 10mm · <kbd>Shift</kbd>+방향키 100mm · <kbd>R</kbd> 회전 · <kbd>휠 드래그</kbd> 화면 이동';
+  if (hint) hint.innerHTML = mode === 'walk' ? '드래그 둘러보기 · <kbd>W A S D</kbd> 이동 · <kbd>Shift</kbd> 빠르게 · 바닥 클릭하면 그곳으로 걸어가요' : '가구를 눌러 고른 뒤 끌어서 옮겨요 · <kbd>방향키</kbd> 10mm · <kbd>Shift</kbd>+방향키 100mm · <kbd>R</kbd> 90° · <kbd>Q</kbd> 45° 회전 · <kbd>휠 드래그</kbd> 화면 이동';
 }
 $('#modeWalk').onclick = () => setMode('walk');
 $('#modeTop').onclick = () => setMode('top');
@@ -2309,8 +2309,14 @@ function refreshFurnStatus() {
       m.emissiveIntensity = st.level === 'ok' ? 0 : .35;
     }
     if (!NOBLOCK[it.s] && it.h >= 150) {   // 걸어 다닐 때 부딪히게
-      const cs = rectCorners(it.x, it.z, it.w / 1000, it.d / 1000, it.r), xs = cs.map(c => c[0]), zs = cs.map(c => c[1]);
-      furnCol.push({ x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) });
+      // 부딪힘은 축에 맞춘 상자로만 계산하므로, 비스듬히 놓인 가구는 긴 쪽으로 잘게 나눠 실제 모양에 가깝게
+      const W2 = it.w / 1000, D2 = it.d / 1000, c = Math.cos(it.r), sn = Math.sin(it.r);
+      const diag = Math.abs(c * sn) > .01, alongW = W2 >= D2, L = alongW ? W2 : D2, n = diag ? Math.max(1, Math.ceil(L / .2)) : 1;
+      for (let i = 0; i < n; i++) {
+        const off = -L / 2 + L * (i + .5) / n, lx = alongW ? off : 0, lz = alongW ? 0 : off;
+        const cs = rectCorners(it.x + lx * c + lz * sn, it.z - lx * sn + lz * c, alongW ? L / n : W2, alongW ? D2 : L / n, it.r), xs = cs.map(q => q[0]), zs = cs.map(q => q[1]);
+        furnCol.push({ x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) });
+      }
     }
   }
   colAll = null; NAV.dirty = true;
@@ -2393,6 +2399,11 @@ function rotateSel(step) {
   const it = furnSel && board.items.get(furnSel); if (!it) return;
   let r = it.r + step; r = Math.atan2(Math.sin(r), Math.cos(r));
   putItem(Object.assign({}, it, { r: Math.round(r * 1e4) / 1e4 }), false);
+}
+function rotateSel45() {   // 다음 45° 칸으로 (15°씩 돌려 놓은 것도 45° 격자에 맞춰짐)
+  const it = furnSel && board.items.get(furnSel); if (!it) return;
+  const q = Math.PI / 4, k = Math.floor(it.r / q + 1e-4) + 1;
+  rotateSel(k * q - it.r);
 }
 function deleteSel() {
   const it = furnSel && board.items.get(furnSel); if (!it) return;
@@ -2511,6 +2522,7 @@ function setupFurnPanel() {
   $('#ceilBtn').onclick = () => { ceilOn = !ceilOn; store.set('vh.ceil', ceilOn); applyLook(); if (!night) toast(ceilOn ? '천장등을 켰어요 (밤에 켜져요)' : '천장등을 껐어요. 밤으로 보면 스탠드 빛만 보여요'); };
   $('#nightBtn2').onclick = () => $('#btnNight').click();
   $('#selRot').onclick = () => rotateSel(Math.PI / 2);
+  $('#selRot45').onclick = rotateSel45;
   $('#selDup').onclick = duplicateSel;
   $('#selDel').onclick = deleteSel;
   $('#selEdit').onclick = () => openPanelOnly('panelFurn');
@@ -2839,6 +2851,7 @@ addEventListener('keydown', e => {
   if (e.key.startsWith('Arrow')) { e.preventDefault(); nudgeSel(e.key, e.shiftKey); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
   else if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') rotateSel(e.shiftKey ? Math.PI / 12 : Math.PI / 2);
+  else if (e.key === 'q' || e.key === 'Q' || e.key === 'ㅂ') rotateSel45();
 });
 
 /* ---------- 가리키기: 누른 곳을 잠깐 표시하고 같이 보는 사람에게도 보낸다 (위치 공유 메시지의 pt) ---------- */
