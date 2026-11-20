@@ -195,6 +195,8 @@ table.areas td.diff{color:var(--oak)}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span class="txt" id="nightTxt">밤</span></button>
     <button class="tbtn" id="btnHQ" aria-pressed="true" aria-label="고화질 켜고 끄기" title="구석 그늘(고화질) 켜고 끄기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg><span class="txt">고화질</span></button>
+    <button class="tbtn" id="btnBaked" aria-pressed="false" aria-label="실사 조명 켜고 끄기" title="실사 조명(Blender로 구운 빛) 켜고 끄기" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="txt">실사</span></button>
     <button class="tbtn" id="btnPlan" aria-expanded="false" aria-controls="panelPlan" aria-label="도면·치수">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4h18v16H3z"/><path d="M3 11h8V4M11 20v-5h10"/><path d="M15 4v4"/></svg><span class="txt">도면·치수</span></button>
     <button class="tbtn" id="btnVideo" aria-expanded="false" aria-controls="panelVideo" aria-label="영상">
@@ -479,6 +481,7 @@ camera.rotation.order = 'YXZ';
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 let night = false;
+const BAKED = { want: store.get('vh.baked', true), meta: null, group: null, loading: null, active: false };   // 실사 조명 상태 (아래 '실사 조명' 참고)
 const LOOK = {
   day:   { env: .5,  hemi: 1.1, sun: 4.2, exposure: 1.0, bg: '#cfdfe8', sky: '#ffffff', lamp: .05 },
   night: { env: .06, hemi: .06, sun: 0,   exposure: 1.15, bg: '#0f1522', sky: '#27324b', lamp: 2.4 }
@@ -543,18 +546,21 @@ const TEX = {
 const TILE_SIZE = { wood: [1.6, 1.6], tile: [1.2, 1.2], entry: [1.2, 1.2], concrete: [2.5, 2.5] };
 /* 영상 프레임에서 잘라 만든 사진 재질: 마루(4.75초 거실), 벽지 결(54초), 문(44.75초) */
 const PHOTO_TEX = {};
+let texReadyResolve; const texReady = new Promise(r => { texReadyResolve = r; });
 (() => {
   const loader = new THREE.TextureLoader();
-  const list = [['wood', 'tex/wood.jpg', [1.3, 0.86]], ['woodN', 'tex/wood_n.jpg', [1.3, 0.86]], ['wall', 'tex/wall.jpg', [0.6, 0.6]], ['door', 'tex/door.jpg', [0.82, 2.1]]];
+  // 마루: Poly Haven laminate_floor_03(CC0)을 우리집 색으로 맞춘 것, 벽지: 실크벽지 요철 생성 (tools/make_pbr.py)
+  const list = [['wood', 'tex/floor_diff.jpg', [2.08, 2.08]], ['woodN', 'tex/floor_nor.jpg', [2.08, 2.08]], ['woodR', 'tex/floor_rough.jpg', [2.08, 2.08]],
+    ['paper', 'tex/paper_diff.jpg', [0.5, 0.5]], ['paperN', 'tex/paper_nor.jpg', [0.5, 0.5]], ['paperR', 'tex/paper_rough.jpg', [0.5, 0.5]], ['door', 'tex/door.jpg', [0.82, 2.1]]];
   let left = list.length;
-  const done = () => { if (--left === 0 && typeof applyModel === 'function') applyModel(model); };
+  const done = () => { if (--left === 0) { if (typeof applyModel === 'function') applyModel(model); texReadyResolve(); } };
   for (const [k, url, size] of list) loader.load(url, t => {
-    t.colorSpace = (k === 'wall' || k === 'woodN') ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+    t.colorSpace = /N$|R$/.test(k) ? THREE.NoColorSpace : THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
     PHOTO_TEX[k] = t;
     if (k === 'wood') TILE_SIZE.wood = size;
     if (k === 'door') { t.repeat.set(1 / size[0], 1 / size[1]); MAT.door.map = t; MAT.door.color.set('#e4dbd0'); MAT.door.needsUpdate = true; }
-    if (k === 'wall') t.repeat.set(1 / size[0], 1 / size[1]);
+    if (k.startsWith('paper')) t.repeat.set(1 / size[0], 1 / size[1]);
     done();
   }, undefined, done);
 })();
@@ -584,6 +590,12 @@ function floorNormal(kind, wm, dm) {
   const t = src.clone(); t.needsUpdate = true;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(wm / TILE_SIZE[kind][0], dm / TILE_SIZE[kind][1]);
+  return t;
+}
+function floorRough(wm, dm) {
+  const t = PHOTO_TEX.woodR.clone(); t.needsUpdate = true;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(wm / TILE_SIZE.wood[0], dm / TILE_SIZE.wood[1]);
   return t;
 }
 function floorTex(kind, wm, dm) {
@@ -652,7 +664,9 @@ function wallMat(kind) {
   if (wallMats[kind]) return wallMats[kind];
   const m = kind === 'tile'
     ? std({ color: '#ffffff', map: TEX.wallTile, normalMap: TEX_N.wall21, normalScale: new THREE.Vector2(.6, .6), roughness: .22 })
-    : std({ color: PHOTO.wall[kind] || PHOTO.wall.warm, map: PHOTO_TEX.wall || null, roughness: .92 });
+    : PHOTO_TEX.paper   // 실크벽지: 잔 요철(노멀) + 은은한 광택
+      ? std({ color: PHOTO.wall[kind] || PHOTO.wall.warm, map: PHOTO_TEX.paper, normalMap: PHOTO_TEX.paperN, normalScale: new THREE.Vector2(1, 1), roughnessMap: PHOTO_TEX.paperR, roughness: 1 })
+      : std({ color: PHOTO.wall[kind] || PHOTO.wall.warm, roughness: .92 });
   return (wallMats[kind] = m);
 }
 function meterUV(geo, L, H, T) {
@@ -706,8 +720,10 @@ function buildHouse(m) {
   for (const r of m.rooms) {
     const [ax, az] = W(r.x0, r.y0), [cx, cz] = W(r.x1, r.y1);
     const w = cx - ax, d = az - cz, mx = (ax + cx) / 2, mz = (az + cz) / 2;
-    const fm = std({ map: floorTex(r.floor, w, d), normalMap: floorNormal(r.floor, w, d), normalScale: new THREE.Vector2(.55, .55), roughness: FLOOR_ROUGH[r.floor] || .6 });
-    fm.userData.own = true;
+    const realWood = r.floor === 'wood' && PHOTO_TEX.woodR;
+    const fm = std({ map: floorTex(r.floor, w, d), normalMap: floorNormal(r.floor, w, d), normalScale: new THREE.Vector2(realWood ? 1 : .55, realWood ? 1 : .55),
+      roughnessMap: realWood ? floorRough(w, d) : null, roughness: realWood ? .8 : (FLOOR_ROUGH[r.floor] || .6) });
+    fm.userData.own = true; fm.name = 'floor_' + r.id;
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(w, d), fm);
     fl.rotation.x = -Math.PI / 2; fl.position.set(mx, 0, mz); fl.receiveShadow = true;
     fl.userData.room = r.id; house.add(fl); floorMeshes.push(fl);
@@ -725,7 +741,8 @@ function buildHouse(m) {
     const lm = new THREE.MeshBasicMaterial({ map: labelTexture(r.name, r.outside ? '' : r.cur.toFixed(2) + '㎡'), transparent: true, depthWrite: false });
     lm.userData.own = true;
     const lw = Math.min(1.7, w * .8), lab = new THREE.Mesh(new THREE.PlaneGeometry(lw, lw / 2), lm);
-    lab.rotation.x = -Math.PI / 2; lab.position.set(mx, .006, mz); lab.userData.noAO = true; house.add(lab);
+    lab.rotation.x = -Math.PI / 2; lab.position.set(mx, .006, mz); lab.userData.noAO = true; lab.userData.floorLabel = true;
+    lab.visible = state.mode !== 'walk'; house.add(lab);   // 바닥 방 이름은 위에서 볼 때만
   }
 
   for (const w of m.walls) {
@@ -764,8 +781,10 @@ function buildHouse(m) {
     const [ax, az] = W(f.x0, f.y0), [cx, cz] = W(f.x0 + f.w, f.y0 + f.d);
     const box = { X: (ax + cx) / 2, Z: (az + cz) / 2, Wd: f.w / 1000, Dd: f.d / 1000, Y0: (f.z || 0) / 1000, Hh: f.h / 1000, zBack: Math.min(az, cz), f, H };
     if (f.solid) pushCollider(box.X, box.Z, [1, 0], box.Wd, box.Dd);
-    if (f.kind && FIX[f.kind]) { FIX[f.kind](box); continue; }
-    addBox(house, box.Wd, box.Hh, box.Dd, box.X, box.Y0 + box.Hh / 2, box.Z, 0, f.tex === 'tile' ? wallMat('tile') : fixMat(f.color));
+    const n0 = house.children.length;
+    if (f.kind && FIX[f.kind]) FIX[f.kind](box);
+    else addBox(house, box.Wd, box.Hh, box.Dd, box.X, box.Y0 + box.Hh / 2, box.Z, 0, f.tex === 'tile' ? wallMat('tile') : fixMat(f.color));
+    if (f.name.endsWith('(도면)')) for (let k = n0; k < house.children.length; k++) house.children[k].userData.furniture = true;
   }
   scene.add(house);
   applyLook();
@@ -969,6 +988,7 @@ function setMode(mode) {
   $('#modeWalk').setAttribute('aria-pressed', mode === 'walk');
   $('#modeTop').setAttribute('aria-pressed', mode === 'top');
   $('#joy').hidden = !(isCoarse && mode === 'walk');
+  if (house) for (const o of house.children) if (o.userData.floorLabel) o.visible = mode !== 'walk';
   if (mode === 'top') { orbit.tx = me.x * .3; orbit.tz = me.z * .3; }
 }
 $('#modeWalk').onclick = () => setMode('walk');
@@ -1321,6 +1341,98 @@ function applyModel(m) {
   [me.x, me.z] = collide(me.x, me.z);
   renderMini();
   state.room = undefined;
+  syncBaked();
+}
+
+/* ---------------- 실사 조명: Blender(Cycles)로 미리 구운 빛 ----------------
+   ?export 로 열면 지금 집 모양을 bake/house_raw.glb로 저장 → tools/bake_house.py가 빛을 구워
+   docs/baked/(house.glb + lightmap.png + meta.json)을 만든다. 도면이 바뀌면 다시 구워야 맞는다. */
+const planSig = p => { const s = JSON.stringify(p); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+function matNames() {   // 재질 → 굽기 파일에서 쓰는 이름
+  const map = new Map();
+  for (const k in MAT) map.set(MAT[k], k);
+  for (const k in wallMats) map.set(wallMats[k], 'wall_' + k);
+  for (const c in fixtureMats) map.set(fixtureMats[c], 'fix_' + c.slice(1).toLowerCase());
+  house.traverse(o => {
+    if (!o.isMesh) return;
+    for (const mt of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!mt || map.has(mt) || !mt.isMeshStandardMaterial) continue;
+      // 설비 모양 안에서 바로 만든 재질(세면대 물받이, 실외기 그릴 등): 색·광택으로 이름을 정한다
+      map.set(mt, mt.name && mt.name.startsWith('floor_') ? mt.name : `x_${mt.color.getHexString()}_${Math.round(mt.roughness * 100)}_${Math.round(mt.metalness * 100)}`);
+    }
+  });
+  return map;
+}
+function bakeTargets() {   // 구울 것: 유리·바닥판·도면 가구·이름표 빼고 전부
+  return house.children.filter(o => {
+    if (!o.isMesh || o.userData.furniture) return false;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    return ms.every(mt => mt && mt.isMeshStandardMaterial && mt !== MAT.glass && mt !== MAT.slab);
+  });
+}
+async function exportForBake() {
+  const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+  const names = matNames(), root = new THREE.Scene();
+  house.updateMatrixWorld(true);
+  let i = 0;
+  for (const o of bakeTargets()) {
+    for (const mt of Array.isArray(o.material) ? o.material : [o.material]) mt.name = names.get(mt) || mt.name || 'misc';
+    const c = new THREE.Mesh(o.geometry, o.material); c.name = 'm' + i++;
+    o.matrixWorld.decompose(c.position, c.quaternion, c.scale); root.add(c);
+  }
+  const glb = await new GLTFExporter().parseAsync(root, { binary: true });
+  const meta = { sig: planSig(plan), meshes: i, sun: sun.position.toArray(), exportedAt: new Date().toISOString() };
+  for (const [n, body] of [['house_raw.glb', glb], ['house_raw.json', JSON.stringify(meta)]]) {
+    const r = await fetch('/__save/' + n, { method: 'POST', body });
+    if (!r.ok) throw new Error(n + ' 저장 실패 ' + r.status);
+  }
+  return meta;
+}
+function lmMaterial(src, lm, meta) {   // 원래 재질 + 구운 빛(로그 인코딩 해제)
+  const m = src.clone();
+  m.lightMap = lm; m.lightMapIntensity = meta.intensity; m.envMapIntensity = meta.env;
+  m.onBeforeCompile = sh => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_maps>',
+      THREE.ShaderChunk.lights_fragment_maps.replace('lightMapTexel.rgb * lightMapIntensity', `( exp2( lightMapTexel.rgb * ${meta.range.toFixed(3)} ) - 1.0 ) * lightMapIntensity`));
+  };
+  m.customProgramCacheKey = () => 'lmlog' + meta.range;
+  return m;
+}
+async function loadBaked() {
+  const meta = await fetch('baked/meta.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!meta) return null;
+  const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+  const [gltf, lm] = await Promise.all([new GLTFLoader().loadAsync('baked/house.glb?v=' + meta.sig + meta.bakedAt), new THREE.TextureLoader().loadAsync('baked/' + meta.lightmap + '?v=' + meta.bakedAt)]);
+  lm.colorSpace = THREE.NoColorSpace; lm.flipY = false; lm.channel = 1; lm.anisotropy = 4;
+  BAKED.meta = meta; BAKED.group = gltf.scene; BAKED.lm = lm;
+  return meta;
+}
+function attachBaked() {   // 구운 모양에 지금 재질(텍스처·광택)을 다시 입힌다
+  const byName = new Map([...matNames()].map(([mt, n]) => [n, mt])), cache = new Map();
+  BAKED.group.traverse(o => {
+    if (!o.isMesh) return;
+    const src = byName.get(o.material.name.replace(/\.\d{3}$/, ''));   // Blender가 겹치는 이름에 붙인 .001 떼기
+    if (!src) { o.visible = false; return; }
+    if (!cache.has(src)) cache.set(src, lmMaterial(src, BAKED.lm, BAKED.meta));
+    o.material = cache.get(src); o.castShadow = false; o.receiveShadow = false;
+  });
+}
+function syncBaked() {
+  const ok = BAKED.want && !night && BAKED.meta && BAKED.meta.sig === planSig(plan);
+  if (BAKED.want && !BAKED.meta && !BAKED.loading) BAKED.loading = loadBaked().then(m => { if (m) syncBaked(); }).catch(e => console.warn('baked', e));
+  if (!house) return;
+  const targets = new Set(bakeTargets());
+  for (const o of house.children) if (targets.has(o)) o.visible = !ok;
+  if (ok && BAKED.attachedTo !== house) { attachBaked(); BAKED.attachedTo = house; }
+  if (ok && BAKED.group.parent !== scene) scene.add(BAKED.group);
+  if (!ok && BAKED.group && BAKED.group.parent) scene.remove(BAKED.group);
+  BAKED.active = !!ok;
+  if (aoPass) aoPass.enabled = !ok;   // 구운 빛에 구석 그늘이 이미 들어 있다
+  hemi.intensity = ok ? BAKED.meta.hemi : (night ? LOOK.night : LOOK.day).hemi;
+  sun.visible = !night && !ok;
+  renderer.toneMappingExposure = ok ? BAKED.meta.exposure : (night ? LOOK.night : LOOK.day).exposure;
+  const b = $('#btnBaked');
+  if (b) { b.hidden = !BAKED.meta; b.setAttribute('aria-pressed', !!ok); b.disabled = !!(BAKED.meta && BAKED.meta.sig !== planSig(plan)); }
 }
 
 /* ---------------- together (room) ---------------- */
@@ -1463,15 +1575,17 @@ function applyLook() {
   scene.traverse(o => {
     if (o.isPointLight && o.userData.roomLight) o.visible = night;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
-    for (const mt of ms) if (mt && mt.isMeshStandardMaterial) mt.envMapIntensity = L.env;
+    for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap) mt.envMapIntensity = L.env;
   });
+  syncBaked();
   $('#btnNight').setAttribute('aria-pressed', night);
   $('#btnNight').setAttribute('aria-label', night ? '낮으로 바꾸기' : '밤으로 바꾸기');
   $('#nightTxt').textContent = night ? '낮' : '밤';
 }
 $('#btnNight').onclick = () => { night = !night; applyLook(); };
+$('#btnBaked').onclick = () => { BAKED.want = !BAKED.want; store.set('vh.baked', BAKED.want); syncBaked(); };
 
-let hq = !isCoarse && store.get('vh.hq', true), composer = null;
+let hq = !isCoarse && store.get('vh.hq', true), composer = null, aoPass = null;
 function setupComposer() {
   if (composer) return;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -1488,7 +1602,7 @@ function setupComposer() {
     ov();
     this.scene.traverse(o => { if (o.isSprite || o.userData.noAO || (o.material && !Array.isArray(o.material) && o.material.transparent)) o.visible = false; });
   };
-  composer.addPass(gtao);
+  composer.addPass(gtao); aoPass = gtao; aoPass.enabled = !BAKED.active;
   composer.addPass(new OutputPass());
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(canvas.clientWidth, canvas.clientHeight);
@@ -1529,11 +1643,15 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => appl
 setTimeout(() => { try { $('#nick').focus({ preventScroll: true }); } catch (e) {} }, 300);
 
 /* 치수: plan.json (없거나 깨졌으면 위의 기본 도면값) */
-fetch('plan.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status)))).then(j => {
+const planReady = fetch('plan.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status)))).then(j => {
   const next = planFromDoc({ plan: j, xSpans: j.xSpans, ySpans: j.ySpans, wallH: j.wallH, doorH: j.doorH });
   if (JSON.stringify(next) !== JSON.stringify(plan)) { plan = next; applyModel(computeModel(plan)); if (!$('#panelPlan').hidden) renderPlanPanel(); }
   setStatus('plan.json의 치수로 보여주는 중이에요.');
 }).catch(() => setStatus('plan.json을 읽지 못해 기본 도면값으로 보여줘요.', true));
+if (new URLSearchParams(location.search).has('export')) {   // 굽기용 내보내기 (tools/devserver.py로 열었을 때만 저장됨)
+  Promise.all([texReady, planReady]).then(exportForBake)
+    .then(m => { window.__exported = m; toast(`굽기용 모양을 저장했어요 (${m.meshes}개)`); }, e => { window.__exported = { error: String(e) }; toast('내보내기 실패: ' + e.message); });
+}
 
 /* 함께 보기: 공개 MQTT 중계 서버로 이름·색·위치만 주고받음.
    같은 주소(+ ?room=값)로 들어온 사람끼리 보임. 받은 값은 모두 검증 후 사용. */

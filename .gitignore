@@ -3,3 +3,6 @@
 *.dxf
 KakaoTalk_*.mp4
 .claude/
+
+# Blender 굽기 중간 파일
+bake/
