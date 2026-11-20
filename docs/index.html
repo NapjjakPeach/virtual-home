@@ -615,7 +615,7 @@ scene.add(sun);
 const GEO = { lat: 37.57, lon: 126.98, north: 314.8042 };   // 위치(서울), 도면 방위표 회전각(°, 반시계)
 const SUN = { custom: false, y: 2026, m: 1, d: 1, min: 900, timer: 0 };
 const board = { items: new Map(), room: null };
-const furnMeshes = new Map(), pinSprites = new Map(), furnState = new Map();
+const furnMeshes = new Map(), pinSprites = new Map(), furnState = new Map(), guides = [];
 const furnGroup = new THREE.Group(), pinGroup = new THREE.Group(), measureGroup = new THREE.Group();
 let furnCol = [], colAll = null, doorZones = [], fixedObs = [], furnSel = null, tool = null;
 function allColliders() { return colAll || (colAll = colliders.concat(furnCol)); }
@@ -1994,7 +1994,7 @@ function seedFurniture() {
   for (const f of (plan.furniture || [])) {
     if (!f || !ID_RE.test(f.id) || board.items.has(f.id)) continue;
     const [x, z] = W(Number(f.px) || 0, Number(f.py) || 0);
-    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1000) / 1000, z: Math.round(z * 1000) / 1000, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: 1 });
+    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1e4) / 1e4, z: Math.round(z * 1e4) / 1e4, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: 1 });
     if (it) { board.items.set(it.id, it); boardChanged(it); }
   }
 }
@@ -2119,17 +2119,66 @@ function refreshFurnStatus() {
     }
   }
   colAll = null;
-  renderSelbar(); renderFurnList();
+  renderSelbar(); renderFurnList(); updateDistGuides();
 }
 const selOutline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: '#3b82f6', depthTest: false, transparent: true }));
 selOutline.renderOrder = 25; selOutline.visible = false; selOutline.userData.noAO = true; scene.add(selOutline);
 function syncSelOutline() {
   const it = furnSel && board.items.get(furnSel);
   selOutline.visible = !!(it && !it.del);
-  if (!selOutline.visible) return;
+  if (!selOutline.visible) { updateDistGuides(); return; }
   const H2 = Math.max(it.h, 8) / 1000 + .02;
   selOutline.scale.set(it.w / 1000 + .02, H2, it.d / 1000 + .02);
   selOutline.position.set(it.x, H2 / 2, it.z); selOutline.rotation.y = it.r;
+  updateDistGuides();
+}
+
+/* 고른 가구의 앞뒤좌우 면에서 벽·붙박이 설비·다른 가구까지 거리 (파란 치수선 + mm) */
+const guideMat = new THREE.LineBasicMaterial({ color: '#3b82f6', depthTest: false, transparent: true });
+for (let i = 0; i < 4; i++) {
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]), guideMat);
+  line.renderOrder = 26; line.visible = false; line.userData.noAO = true; line.frustumCulled = false;
+  scene.add(line);
+  guides.push({ line, label: null, text: '' });
+}
+function rayPolyDist(ox, oz, dx, dz, poly) {   // 반직선이 다각형 변과 처음 만나는 거리
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+    const ex = bx - ax, ez = bz - az, den = dx * ez - dz * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((ax - ox) * ez - (az - oz) * ex) / den, u = ((ax - ox) * dz - (az - oz) * dx) / den;
+    if (t > -.006 && u >= 0 && u <= 1 && t < best) best = Math.max(0, t);   // 6mm 안쪽으로 살짝 겹친 건 붙은 것으로
+  }
+  return best;
+}
+function hideGuide(g) { g.line.visible = false; if (g.label) g.label.visible = false; }
+function updateDistGuides() {
+  const it = furnSel && board.items.get(furnSel);
+  if (!guides.length) return;
+  if (!it || it.del || state.mode !== 'top') { guides.forEach(hideGuide); return; }
+  const obs = colliders.map(aabbPoly).concat(fixedObs);
+  for (const [id, o] of board.items) if (id !== it.id && o.k === 'f' && !o.del && o.s !== 'rug') obs.push(rectCorners(o.x, o.z, o.w / 1000, o.d / 1000, o.r));
+  const c = Math.cos(it.r), sn = Math.sin(it.r), hw = it.w / 2000, hd = it.d / 2000;
+  const toW = (lx, lz) => [it.x + lx * c + lz * sn, it.z - lx * sn + lz * c];
+  [[1, 0, hw, hd], [-1, 0, hw, hd], [0, 1, hd, hw], [0, -1, hd, hw]].forEach(([lx, lz, toFace, half], i) => {
+    const g = guides[i], dir = [lx * c + lz * sn, -lx * sn + lz * c];
+    let best = Infinity, from = null;
+    for (const f of [0, .85, -.85]) {   // 면 가운데와 양 끝 근처에서 재고 가장 가까운 값
+      const [ox, oz] = toW(lx ? lx * toFace : f * half, lz ? lz * toFace : f * half);
+      for (const poly of obs) { const t = rayPolyDist(ox, oz, dir[0], dir[1], poly); if (t < best) { best = t; from = [ox, oz]; } }
+    }
+    if (!from || best > 8) { hideGuide(g); return; }
+    const y = .03, a = new THREE.Vector3(from[0], y, from[1]), b = new THREE.Vector3(from[0] + dir[0] * best, y, from[1] + dir[1] * best);
+    const pos = g.line.geometry.attributes.position; pos.setXYZ(0, a.x, a.y, a.z); pos.setXYZ(1, b.x, b.y, b.z); pos.needsUpdate = true;
+    g.line.visible = best > .004;
+    const text = best <= .004 ? '붙음' : `${Math.round(best * 1000).toLocaleString('ko-KR')} mm`;
+    if (text !== g.text || !g.label) {
+      if (g.label) { scene.remove(g.label); disposeObj(g.label); }
+      g.label = pillSprite(text, '#3b82f6'); g.text = text; scene.add(g.label);
+    }
+    g.label.position.copy(a).lerp(b, .5); g.label.position.y = .14; g.label.visible = true;
+  });
 }
 function selectFurn(id) {
   if (id && tool) setTool(null);

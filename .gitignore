@@ -6,3 +6,6 @@ KakaoTalk_*.mp4
 
 # Blender 굽기 중간 파일
 bake/
+
+# 바로가기 (이 PC 전용)
+*.url
