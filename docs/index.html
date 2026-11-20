@@ -473,14 +473,14 @@ const DEFAULT_PLAN = {
     { name: '난간',       ref: [2,6], x: 125, y: 770, w: 1259, d: 40, h: 1100, color: '#f4f4f2', kind: 'railing', solid: true },
     { name: '실외기',     ref: [2,6], x: 300, y: 420, w: 850, d: 320, h: 620, color: '#e9e6df', kind: 'acunit' },
     { name: '신발장',     ref: [4,1], x: -525, y: 125, w: 400, d: 1150, h: 2100, color: '#eeebe5' },
-    { name: '스탠드 에어컨', ref: [1,2], x: 225, y: -625, w: 350, d: 300, h: 1800, color: '#fafafa' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 300, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 707, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 1114, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' }
   ],
   // 처음 들어온 사람에게 기본으로 놓이는 가구 (끌어서 옮기거나 지울 수 있음, 위치는 도면 mm)
   furniture: [
-    { id: 'bed0room2', n: '침대', w: 1700, d: 2000, h: 450, s: 'bed', c: '#e9e3d9', px: 8717, py: 8590, rot: -90 }
+    { id: 'bed0room2', n: '침대', w: 1700, d: 2000, h: 450, s: 'bed', c: '#e9e3d9', px: 8717, py: 8590, rot: -90 },
+    { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 }
   ]
 };
 
@@ -1990,7 +1990,8 @@ const tmpV = new THREE.Vector3();
 const newId = () => (Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 7)).replace(/[^a-z0-9]/g, 'x');
 const BOARD_KEY = 'vh.board.' + (((new URLSearchParams(location.search).get('room') || 'main').replace(/[^a-z0-9_-]/gi, '').slice(0, 24)) || 'main');
 const ID_RE = /^[a-z0-9]{6,16}$/;
-const SHAPES = { box: 1, bed: 1, sofa: 1, table: 1, chair: 1, rug: 1, wardrobe: 1, fridge: 1, washer: 1, tv: 1, floorlamp: 1, tablelamp: 1, pendant: 1 };
+const SHAPES = { box: 1, bed: 1, sofa: 1, table: 1, chair: 1, rug: 1, wardrobe: 1, fridge: 1, washer: 1, tv: 1, floorlamp: 1, tablelamp: 1, pendant: 1, aircon: 1 };
+let AC_SHADOW = null;   // 스탠드 에어컨 바닥 그늘 (부드러운 원형)
 const LAMPS = { floorlamp: { cd: 12 }, tablelamp: { cd: 6 }, pendant: { cd: 11 } };   // 빛 세기(칸델라, 거리 제곱으로 줄어듦)
 const LC = { warm: { n: '전구색', c: '#ffc690' }, neutral: { n: '주백색', c: '#ffeedd' }, cool: { n: '주광색', c: '#e6efff' } };
 const NOBLOCK = { rug: 1, pendant: 1 };   // 바닥 자리를 차지하지 않는 것 (겹침·부딪힘 판정에서 뺀다)
@@ -2002,7 +2003,8 @@ const PRESETS = [
            ['러그', 1600, 2300, 10, 'rug', '#c7b9a3'], ['책장', 800, 300, 1800, 'wardrobe', '#b68a5d']]],
   ['주방 · 작업', [['식탁 2인', 800, 800, 750, 'table', '#b68a5d'], ['식탁 4인', 1200, 750, 750, 'table', '#b68a5d'], ['책상', 1200, 600, 730, 'table', '#b68a5d'], ['의자', 450, 500, 820, 'chair', '#4f4a45']]],
   ['조명', [['플로어 스탠드', 400, 400, 1600, 'floorlamp', '#efe8dc'], ['협탁 + 스탠드', 450, 400, 550, 'tablelamp', '#b68a5d'], ['펜던트 조명', 350, 350, 700, 'pendant', '#2a2724']]],
-  ['가전', [['양문형 냉장고', 912, 920, 1790, 'fridge', '#cfd3d6'], ['일반 냉장고', 600, 700, 1800, 'fridge', '#cfd3d6'], ['세탁기', 600, 650, 850, 'washer', '#f2f2f2'], ['건조기', 600, 650, 850, 'washer', '#f2f2f2']]]
+  ['가전', [['양문형 냉장고', 912, 920, 1790, 'fridge', '#cfd3d6'], ['일반 냉장고', 600, 700, 1800, 'fridge', '#cfd3d6'], ['세탁기', 600, 650, 850, 'washer', '#f2f2f2'], ['건조기', 600, 650, 850, 'washer', '#f2f2f2'],
+           ['스탠드 에어컨', 350, 300, 1800, 'aircon', '#f4f4f1']]]
 ];
 
 /* ---------- 2D 도형 판정 ---------- */
@@ -2169,6 +2171,27 @@ function buildFurnObject(it) {
     case 'wardrobe': case 'fridge': {
       box(W2, H2, D2, 0, H2 / 2, 0);
       box(.006, H2 * .96, .004, 0, H2 / 2, D2 / 2 + .002, mk('#6b6660'));   // 문 사이 선
+      break;
+    }
+    case 'aircon': {   // 스탠드 에어컨: 둥근 모서리 몸통, 위쪽 바람 나오는 네모 판, 표시창, 받침 (앞 = +z)
+      const r = Math.min(W2, D2) * .2, sh = new THREE.Shape(), hw = W2 / 2, hd = D2 / 2;
+      sh.moveTo(-hw + r, -hd); sh.lineTo(hw - r, -hd); sh.quadraticCurveTo(hw, -hd, hw, -hd + r); sh.lineTo(hw, hd - r); sh.quadraticCurveTo(hw, hd, hw - r, hd);
+      sh.lineTo(-hw + r, hd); sh.quadraticCurveTo(-hw, hd, -hw, hd - r); sh.lineTo(-hw, -hd + r); sh.quadraticCurveTo(-hw, -hd, -hw + r, -hd);
+      const plastic = std({ color: it.c, roughness: .32 }); plastic.envMapIntensity = curEnv(); mats.push(plastic);
+      const bh = .055, body = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: H2 - bh, bevelEnabled: false, curveSegments: 6 }), plastic);
+      body.rotation.x = -Math.PI / 2; body.position.y = bh; body.castShadow = body.receiveShadow = true; g.add(body);
+      box(W2 * .96, bh, D2 * .96, 0, bh / 2, 0, mk('#dcdcd8'));                                    // 받침
+      const fz = hd + .004, ow = W2 * .8, oh = Math.min(.36, H2 * .19), oy = H2 - .06 - oh / 2;
+      box(ow, oh, .008, 0, oy, fz, mk('#c9cbca'));                                                  // 바람 나오는 판 테두리
+      box(ow - .03, oh - .03, .008, 0, oy, fz + .002, mk('#eceeed'));
+      for (let i = 1; i < 6; i++) box(ow - .05, .004, .004, 0, oy - oh / 2 + .015 + (oh - .03) * i / 6, fz + .007, mk('#d6d8d7'));   // 날개 결
+      box(W2 * .42, .026, .006, 0, oy - oh / 2 - .085, fz, std({ color: '#26292c', roughness: .15 }));   // 표시창
+      const led = new THREE.Mesh(new THREE.BoxGeometry(.012, .008, .004), new THREE.MeshBasicMaterial({ color: '#7fd4ff' }));
+      led.position.set(W2 * .12, oy - oh / 2 - .085, fz + .004); g.add(led);
+      box(.004, H2 * .5, .003, 0, H2 * .36, fz, mk('#e3e3e0'));                                       // 앞판 이음선
+      AC_SHADOW = AC_SHADOW || canvasTex(64, 64, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 6, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+      const cs = new THREE.Mesh(new THREE.PlaneGeometry(W2 * 1.6, D2 * 1.8), new THREE.MeshBasicMaterial({ map: AC_SHADOW, transparent: true, depthWrite: false }));
+      cs.rotation.x = -Math.PI / 2; cs.position.y = .002; cs.userData.noAO = true; g.add(cs);   // 바닥에 닿은 그늘
       break;
     }
     case 'floorlamp': {
