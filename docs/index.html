@@ -361,7 +361,7 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="field"><label class="label" for="sunTime">시각 · <span id="sunTimeTxt"></span></label><input type="range" id="sunTime" min="300" max="1260" step="5"></div>
       <div class="row"><button class="btn" id="sunPlay">하루 재생</button><button class="btn" id="sunReset">기본 조명으로</button></div>
       <p class="sunread" id="sunRead"></p>
-      <p class="note">집 방향은 도면의 방위표(도면 위쪽에서 시계 방향으로 45° 돌아간 쪽이 북쪽)로, 해 위치는 서울 기준으로 계산해요. 실사 조명은 한 시각의 빛으로 구워 둔 거라, 시간을 고르는 동안은 일반 조명으로 보여요.</p>
+      <p class="note">집 방향은 도면의 방위표(도면 위쪽에서 시계 방향으로 45° 돌아간 쪽이 북쪽)로, 해 위치는 우리 동네 위도·경도로 계산해요. 실사 조명은 한 시각의 빛으로 구워 둔 거라, 시간을 고르는 동안은 일반 조명으로 보여요.</p>
     </div>
   </aside>
 
@@ -567,7 +567,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#cfdfe8');
-const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.08, 6000);
 camera.rotation.order = 'YXZ';
 
 /* 간접광: RoomEnvironment를 미리 구워 반사·채움빛으로 쓴다 */
@@ -589,7 +589,7 @@ Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, n
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 scene.add(sun);
 /* 집 꾸미기 상태 (아래 '집 꾸미기'에서 사용, 부팅 중에도 참조되므로 여기서 선언) */
-const GEO = { lat: 37.57, lon: 126.98, north: 314.8042 };   // 위치(서울), 도면 방위표 회전각(°, 반시계)
+const GEO = { lat: 37.29, lon: 127.05, north: 314.8042, floor: 11, storey: 3.0, totalFloors: 15 };   // 대략 위치(해 계산용), 도면 방위표 회전각(°, 반시계), 우리 집 층·층고·건물 층수(추정)
 const SUN = { custom: false, y: 2026, m: 1, d: 1, min: 900, timer: 0 };
 const board = { items: new Map(), room: null };
 const furnMeshes = new Map(), pinSprites = new Map(), furnState = new Map(), guides = [];
@@ -708,37 +708,164 @@ function floorTex(kind, wm, dm) {
   return t;
 }
 
-/* 창밖 풍경: 산 능선 + 도시 */
+/* 창밖 풍경: 실제 주변 건물·숲·도로(OpenStreetMap, docs/context.json) + 먼 산
+   우리 집 바닥이 y=0, 지면은 GROUND_Y(11층 → 약 -30m). 좌표는 make_context.py가 도면 방향에 맞춰 둔 월드 좌표. */
 const SKY_MAT = new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false });
-const GROUND_MAT = new THREE.MeshBasicMaterial({ color: '#7f8a74' });
+const GROUND_MAT = new THREE.MeshStandardMaterial({ color: '#8b917f', roughness: 1 });
+const GROUND_Y = -(GEO.floor - 1) * GEO.storey;
+scene.fog = new THREE.Fog('#cfdfe8', 700, 4600);
 (() => {
-  const tex = canvasTex(2048, 512, (g, w, h) => {
-    const sky = g.createLinearGradient(0, 0, 0, h * .55);
-    sky.addColorStop(0, '#a9c8de'); sky.addColorStop(1, '#e3ecef');
-    g.fillStyle = sky; g.fillRect(0, 0, w, h);
-    const r = rand(21);
-    const ridge = (base, amp, col, seed) => {
-      const rr = rand(seed); g.fillStyle = col; g.beginPath(); g.moveTo(0, h);
-      for (let x = 0; x <= w; x += 8) { const y = base - amp * (0.55 + 0.45 * Math.sin(x / w * Math.PI * 6 + seed) * Math.sin(x / w * Math.PI * 2.3)) - rr() * 4; g.lineTo(x, y); }
-      g.lineTo(w, h); g.fill();
+  // 하늘 + 먼 산 (북쪽 방향에 광교산 능선을 크게)
+  const north = (() => { const r = GEO.north * Math.PI / 180; return Math.atan2(-Math.sin(r), -Math.cos(r)); })();   // 월드에서 북쪽 각도(θ, x=sinθ, z=cosθ)
+  const tex = canvasTex(4096, 1024, (g, w, h) => {
+    const hz = h * .5;
+    const sky = g.createLinearGradient(0, 0, 0, hz);
+    sky.addColorStop(0, '#9fc2dc'); sky.addColorStop(.75, '#d7e6ee'); sky.addColorStop(1, '#e8eef0');
+    g.fillStyle = sky; g.fillRect(0, 0, w, hz);
+    const uN = ((north / (Math.PI * 2)) % 1 + 1) % 1;
+    const ridge = (col, amp, seed, peakAmp) => {
+      const rr = rand(seed); g.fillStyle = col; g.beginPath(); g.moveTo(0, hz + 4);
+      for (let x = 0; x <= w; x += 6) {
+        const u = x / w; let du = Math.abs(u - uN); du = Math.min(du, 1 - du);
+        const peak = peakAmp * Math.exp(-(du * du) / (2 * .045 * .045));
+        const y = hz - amp * (.5 + .5 * Math.sin(u * Math.PI * 9 + seed) * Math.sin(u * Math.PI * 3.7 + seed * 2)) - peak - rr() * 3;
+        g.lineTo(x, y);
+      }
+      g.lineTo(w, hz + 4); g.fill();
     };
-    ridge(h * .47, 40, '#9fb1b4', 2); ridge(h * .5, 26, '#8a9f97', 5);
-    for (let i = 0; i < 260; i++) {
-      const bw = 8 + r() * 26, bh = 8 + r() * 46, x = r() * w;
-      g.fillStyle = `hsl(${200 + r() * 30},${6 + r() * 8}%,${70 + r() * 16}%)`;
-      g.fillRect(x, h * .52 - bh, bw, bh + h * .1);
-    }
-    const gr = g.createLinearGradient(0, h * .52, 0, h);
-    gr.addColorStop(0, '#9aa38f'); gr.addColorStop(1, '#6f7a66');
-    g.fillStyle = gr; g.fillRect(0, h * .52 + 10, w, h);
+    ridge('#b3c3c6', h * .035, 3, h * .17);   // 먼 능선(광교산)
+    ridge('#9fb3ad', h * .02, 8, h * .08);
+    g.fillStyle = '#c8d2cf'; g.fillRect(0, hz - 2, w, 6);       // 지평선 안개
+    g.fillStyle = '#8b917f'; g.fillRect(0, hz + 4, w, h - hz);
   });
-  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(80, 80, 90, 48, 1, true), SKY_MAT);
   SKY_MAT.map = tex;
-  cyl.position.y = -2; cyl.userData.noAO = true; scene.add(cyl);
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(80, 48), GROUND_MAT);
-  ground.userData.noAO = true;
-  ground.rotation.x = -Math.PI / 2; ground.position.y = -21; scene.add(ground);
+  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(4800, 4800, 2400, 64, 1, true), SKY_MAT);
+  cyl.position.y = GROUND_Y + 30; cyl.userData.noAO = true; scene.add(cyl);
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(4800, 64), GROUND_MAT);
+  ground.rotation.x = -Math.PI / 2; ground.position.y = GROUND_Y; ground.userData.noAO = true; ground.receiveShadow = false;
+  scene.add(ground);
 })();
+
+/* 주변 건물 외벽: 4×4칸(한 칸 = 폭 3.2m · 층 3.1m) 창문 무늬, 밤에는 일부 창에 불 */
+const FACADE = (() => {
+  const r = rand(42), lit = [];
+  const draw = (g, w, h, night) => {
+    g.fillStyle = night ? '#000' : '#dcd9d2'; g.fillRect(0, 0, w, h);
+    const c = w / 4;
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      const k = i * 4 + j; if (lit[k] === undefined) lit[k] = r() < .45;
+      if (night) { if (!lit[k]) continue; g.fillStyle = r() < .5 ? '#ffd29a' : '#fff1d6'; }
+      else { const gr = g.createLinearGradient(0, j * c, 0, j * c + c); gr.addColorStop(0, '#6f7c86'); gr.addColorStop(1, '#4e5962'); g.fillStyle = gr; }
+      g.fillRect(i * c + c * .14, j * c + c * .26, c * .72, c * .5);
+    }
+  };
+  const map = canvasTex(512, 512, (g, w, h) => draw(g, w, h, false));
+  const em = canvasTex(512, 512, (g, w, h) => draw(g, w, h, true));
+  for (const t of [map, em]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+  return { map, em, bayW: 3.2 * 4, floorH: 3.1 * 4 };
+})();
+const CTX_MAT = {
+  wall: new THREE.MeshStandardMaterial({ map: FACADE.map, emissiveMap: FACADE.em, emissive: '#ffcf8a', emissiveIntensity: 0, vertexColors: true, roughness: .85, side: THREE.DoubleSide }),
+  roof: new THREE.MeshStandardMaterial({ color: '#b9b7b0', vertexColors: true, roughness: .95, side: THREE.DoubleSide }),
+  area: k => new THREE.MeshStandardMaterial({ color: { wood: '#4f6b43', green: '#7f9a62', pitch: '#9b8a62', water: '#6f93a6', dirt: '#a39478' }[k], roughness: 1,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+  road: new THREE.MeshStandardMaterial({ color: '#5c6064', roughness: .9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
+  stream: new THREE.MeshStandardMaterial({ color: '#6f93a6', roughness: .4, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
+  leaf: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .9 }),
+  trunk: new THREE.MeshStandardMaterial({ color: '#5a4636', roughness: 1 })
+};
+let ctxGroup = null;
+function buildContext(d) {
+  const grp = new THREE.Group(), r = rand(11);
+  const mesh = (pos, mat, extra = {}) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    if (extra.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(extra.uv, 2));
+    if (extra.col) geo.setAttribute('color', new THREE.Float32BufferAttribute(extra.col, 3));
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat); m.userData.noAO = true; m.matrixAutoUpdate = false; grp.add(m); return m;
+  };
+  // 건물: 벽(창문 무늬) + 지붕
+  const wp = [], wuv = [], wc = [], rp = [], rc = [];
+  for (const [h, flat] of d.b) {
+    const pts = []; for (let i = 0; i + 1 < flat.length; i += 2) pts.push(new THREE.Vector2(flat[i], flat[i + 1]));
+    if (pts.length < 3) continue;
+    const y0 = GROUND_Y, y1 = GROUND_Y + h, tone = .86 + r() * .14, warm = r() * .05;
+    const cw = [tone + warm, tone, tone - warm];
+    let acc = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length], L = a.distanceTo(b);
+      const u0 = acc / FACADE.bayW, u1 = (acc + L) / FACADE.bayW, v1 = h / FACADE.floorH;
+      wp.push(a.x, y0, a.y, b.x, y0, b.y, b.x, y1, b.y, a.x, y0, a.y, b.x, y1, b.y, a.x, y1, a.y);
+      wuv.push(u0, 0, u1, 0, u1, v1, u0, 0, u1, v1, u0, v1);
+      for (let k = 0; k < 6; k++) wc.push(...cw);
+      acc += L;
+    }
+    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(pts, [])) {
+      for (const q of [pts[i], pts[j], pts[k]]) { rp.push(q.x, y1, q.y); rc.push(tone, tone, tone); }
+    }
+  }
+  mesh(wp, CTX_MAT.wall, { uv: wuv, col: wc });
+  mesh(rp, CTX_MAT.roof, { col: rc });
+  // 숲·공원·운동장·물
+  for (const k in d.a) {
+    const ap = [];
+    for (const flat of d.a[k]) {
+      const pts = []; for (let i = 0; i + 1 < flat.length; i += 2) pts.push(new THREE.Vector2(flat[i], flat[i + 1]));
+      if (pts.length < 3) continue;
+      for (const [i, j, m] of THREE.ShapeUtils.triangulateShape(pts, [])) for (const q of [pts[i], pts[j], pts[m]]) ap.push(q.x, GROUND_Y + .05, q.y);
+    }
+    if (ap.length) mesh(ap, CTX_MAT.area(k));
+  }
+  // 도로·물길 (폭 있는 띠)
+  const road = [], water = [];
+  for (const [w0, flat] of d.r) {
+    const out = w0 < 0 ? water : road, hw = Math.abs(w0) / 2;
+    const pts = []; for (let i = 0; i + 1 < flat.length; i += 2) pts.push([flat[i], flat[i + 1]]);
+    const nrm = pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1; return [-dz / l, dx / l];
+    });
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], y = GROUND_Y + .08;
+      const a1 = [a[0] + na[0] * hw, a[1] + na[1] * hw], a2 = [a[0] - na[0] * hw, a[1] - na[1] * hw];
+      const b1 = [b[0] + nb[0] * hw, b[1] + nb[1] * hw], b2 = [b[0] - nb[0] * hw, b[1] - nb[1] * hw];
+      out.push(a1[0], y, a1[1], b1[0], y, b1[1], b2[0], y, b2[1], a1[0], y, a1[1], b2[0], y, b2[1], a2[0], y, a2[1]);
+    }
+  }
+  if (road.length) mesh(road, CTX_MAT.road);
+  if (water.length) mesh(water, CTX_MAT.stream);
+  // 나무
+  const n = d.t.length / 2;
+  if (n) {
+    const leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), CTX_MAT.leaf, n);
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.18, .25, 1, 6), CTX_MAT.trunk, n);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const x = d.t[i * 2], z = d.t[i * 2 + 1], sz = 2 + r() * 1.6, th = 2.5 + r() * 2;
+      m4.compose(p.set(x, GROUND_Y + th + sz * .9, z), q, s.set(sz, sz * (1.1 + r() * .3), sz)); leaf.setMatrixAt(i, m4);
+      m4.compose(p.set(x, GROUND_Y + th / 2 + .5, z), q, s.set(1, th + 1, 1)); trunk.setMatrixAt(i, m4);
+      leaf.setColorAt(i, c.setHSL(.24 + r() * .08, .35 + r() * .15, .26 + r() * .1));
+    }
+    for (const im of [leaf, trunk]) { im.userData.noAO = true; grp.add(im); }
+  }
+  // 우리 동 건물: 우리 집 아래층과 위층 덩어리 (같은 층은 그리지 않아 창을 가리지 않음)
+  const g = model.g, [ax, az] = W(g.X[0] - 125, g.Y[0] - 125), [bx, bz] = W(g.X[g.X.length - 1] + 125, g.Y[g.Y.length - 1] + 125);
+  const tw = Math.abs(bx - ax), td = Math.abs(az - bz), cx = (ax + bx) / 2, cz = (az + bz) / 2;
+  const tower = (y0, y1) => {
+    const geo = new THREE.BoxGeometry(tw, y1 - y0, td);
+    const uvA = geo.attributes.uv; const dims = [[td, y1 - y0], [td, y1 - y0], [tw, td], [tw, td], [tw, y1 - y0], [tw, y1 - y0]];
+    for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uvA.setXY(i, uvA.getX(i) * dims[f][0] / FACADE.bayW, uvA.getY(i) * dims[f][1] / FACADE.floorH); }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(new Array(geo.attributes.position.count * 3).fill(.95), 3));
+    const m = new THREE.Mesh(geo, CTX_MAT.wall); m.position.set(cx, (y0 + y1) / 2, cz); m.userData.noAO = true; grp.add(m);
+  };
+  tower(GROUND_Y, -.28);
+  tower(model.H / 1000 + .3, GROUND_Y + GEO.totalFloors * GEO.storey);
+  if (ctxGroup) { scene.remove(ctxGroup); disposeTree(ctxGroup); }
+  ctxGroup = grp; scene.add(grp);
+  if (typeof applyLook === 'function') applyLook();
+}
+fetch('context.json').then(r => r.ok ? r.json() : null).then(d => { if (d) buildContext(d); }).catch(e => console.warn('context', e));
 
 const std = p => new THREE.MeshStandardMaterial(p);
 const MAT = {
@@ -1679,7 +1806,9 @@ function applyLook() {
   const L = night ? LOOK.night : LOOK.day;
   hemi.intensity = L.hemi; sun.intensity = L.sun; sun.visible = !night;
   renderer.toneMappingExposure = L.exposure;
-  scene.background.set(L.bg); SKY_MAT.color.set(L.sky); GROUND_MAT.color.set(night ? '#1d2219' : '#7f8a74');
+  scene.background.set(L.bg); SKY_MAT.color.set(L.sky); GROUND_MAT.color.set(night ? '#2a3028' : '#8b917f');
+  if (scene.fog) scene.fog.color.set(L.bg);
+  CTX_MAT.wall.emissiveIntensity = night ? 1.1 : 0;
   MAT.lamp.emissiveIntensity = L.lamp;
   scene.traverse(o => {
     if (o.isPointLight && o.userData.roomLight) o.visible = night;
