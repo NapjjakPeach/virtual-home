@@ -783,7 +783,7 @@ const CTX_MAT = {
   leaf: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .9 }),
   trunk: new THREE.MeshStandardMaterial({ color: '#5a4636', roughness: 1 })
 };
-let ctxGroup = null;
+let ctxGroup = null, ctxUpper = null;
 function buildContext(d) {
   const grp = new THREE.Group(), r = rand(11);
   const mesh = (pos, mat, extra = {}) => {
@@ -867,9 +867,11 @@ function buildContext(d) {
     for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uvA.setXY(i, uvA.getX(i) * dims[f][0] / FACADE.bayW, uvA.getY(i) * dims[f][1] / FACADE.floorH); }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(new Array(geo.attributes.position.count * 3).fill(.95), 3));
     const m = new THREE.Mesh(geo, CTX_MAT.wall); m.position.set(cx, (y0 + y1) / 2, cz); m.userData.noAO = true; grp.add(m);
+    return m;
   };
   tower(GROUND_Y, -.28);
-  tower(model.H / 1000 + .3, GROUND_Y + GEO.totalFloors * GEO.storey);
+  ctxUpper = tower(model.H / 1000 + .3, GROUND_Y + GEO.totalFloors * GEO.storey);
+  ctxUpper.visible = state.mode === 'walk';   // 가구 배치(위에서 보기)일 때는 위층을 치운다
   if (ctxGroup) { scene.remove(ctxGroup); disposeTree(ctxGroup); }
   ctxGroup = grp; scene.add(grp);
   if (typeof applyLook === 'function') applyLook();
@@ -1228,6 +1230,7 @@ function setMode(mode) {
   $('#joy').hidden = !(isCoarse && mode === 'walk');
   if (house) for (const o of house.children) if (o.userData.floorLabel) o.visible = mode !== 'walk';
   furnGroup.traverse(o => { if (o.userData.furnLabel) o.visible = mode !== 'walk'; });
+  if (ctxUpper) ctxUpper.visible = mode === 'walk';   // 위에서 볼 때 위층 건물이 가리지 않게
   if (mode === 'top') { orbit.tx = me.x * .3; orbit.tz = me.z * .3; }
   if (mode === 'walk' && furnSel) selectFurn(null);   // 가구는 가구 배치 모드에서만 고친다
   const hint = $('#hint');
