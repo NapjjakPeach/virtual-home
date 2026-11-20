@@ -312,9 +312,6 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="label">면적 비교</div>
       <table class="areas" id="areas"></table>
       <p class="status" id="planStatus"></p>
-      <div class="row">
-        <button class="btn" id="furnBtn" aria-pressed="true">도면 가구 숨기기</button>
-      </div>
       <p class="note">치수는 DWG 평면도에서 뽑았어요. 창문 위치·높이, 화장실 설비 배치는 영상을 보고 추정했어요.</p>
     </div>
   </aside>
@@ -493,10 +490,11 @@ const DEFAULT_PLAN = {
     { name: '스탠드 에어컨', ref: [1,2], x: 225, y: -625, w: 350, d: 300, h: 1800, color: '#fafafa' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 300, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 707, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
-    { name: '펜던트 조명', ref: [0,2], x: 2383, y: 1114, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
-    { name: '침대(도면)',   ref: [3,4], x: 1475, y: 650, w: 2000, d: 1700, h: 450, color: '#e9e3d9' },
-    { name: '베개',       ref: [3,4], x: 3075, y: 750, w: 300, d: 725, h: 120, z: 450, color: '#fbfaf7' },
-    { name: '베개',       ref: [3,4], x: 3075, y: 1525, w: 300, d: 725, h: 120, z: 450, color: '#fbfaf7' }
+    { name: '펜던트 조명', ref: [0,2], x: 2383, y: 1114, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' }
+  ],
+  // 처음 들어온 사람에게 기본으로 놓이는 가구 (끌어서 옮기거나 지울 수 있음, 위치는 도면 mm)
+  furniture: [
+    { id: 'bed0room2', n: '침대', w: 1700, d: 2000, h: 450, s: 'bed', c: '#e9e3d9', px: 8717, py: 8590, rot: -90 }
   ]
 };
 
@@ -983,10 +981,7 @@ const FIX = {
     addMesh(new THREE.SphereGeometry(.045, 16, 10), MAT.lamp, X, Y0 + .02, Z, { cast: false });
   }
 };
-let showFurniture = store.get('vh.furniture', true);
-function syncFurnBtn() { const b = $('#furnBtn'); b.textContent = showFurniture ? '도면 가구 숨기기' : '도면 가구 보이기'; b.setAttribute('aria-pressed', showFurniture); }
-$('#furnBtn').onclick = () => { showFurniture = !showFurniture; store.set('vh.furniture', showFurniture); syncFurnBtn(); buildHouse(model); };
-syncFurnBtn();
+let showFurniture = true;
 
 function pushCollider(x, z, u, L, T) {
   const ux = Math.abs(u[0]), uz = Math.abs(u[1]);
@@ -1488,7 +1483,7 @@ function applyModel(m) {
 /* ---------------- 실사 조명: Blender(Cycles)로 미리 구운 빛 ----------------
    ?export 로 열면 지금 집 모양을 bake/house_raw.glb로 저장 → tools/bake_house.py가 빛을 구워
    docs/baked/(house.glb + lightmap.png + meta.json)을 만든다. 도면이 바뀌면 다시 구워야 맞는다. */
-const planSig = p => { const s = JSON.stringify(p); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+const planSig = p => { const s = JSON.stringify(Object.assign({}, p, { furniture: undefined, fixtures: (p.fixtures || []).filter(f => !String(f.name).endsWith('(도면)')) })); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
 function matNames() {   // 재질 → 굽기 파일에서 쓰는 이름
   const map = new Map();
   for (const k in MAT) map.set(MAT[k], k);
@@ -1789,6 +1784,7 @@ const planReady = fetch('plan.json', { cache: 'no-cache' }).then(r => r.ok ? r.j
   const next = planFromDoc({ plan: j, xSpans: j.xSpans, ySpans: j.ySpans, wallH: j.wallH, doorH: j.doorH });
   if (JSON.stringify(next) !== JSON.stringify(plan)) { plan = next; applyModel(computeModel(plan)); if (!$('#panelPlan').hidden) renderPlanPanel(); }
   setStatus('plan.json의 치수로 보여주는 중이에요.');
+  if (typeof seedFurniture === 'function') seedFurniture();
 }).catch(() => setStatus('plan.json을 읽지 못해 기본 도면값으로 보여줘요.', true));
 if (new URLSearchParams(location.search).has('export')) {   // 굽기용 내보내기 (tools/devserver.py로 열었을 때만 저장됨)
   Promise.all([texReady, planReady]).then(exportForBake)
@@ -1988,6 +1984,15 @@ function attachBoard(r) {
   });
 }
 
+/* 도면 데이터의 기본 가구: 보드에 같은 id가 한 번도 없었을 때만 놓는다 (t=1이라 누가 옮기거나 지우면 그쪽이 이김) */
+function seedFurniture() {
+  for (const f of (plan.furniture || [])) {
+    if (!f || !ID_RE.test(f.id) || board.items.has(f.id)) continue;
+    const [x, z] = W(Number(f.px) || 0, Number(f.py) || 0);
+    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1000) / 1000, z: Math.round(z * 1000) / 1000, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: 1 });
+    if (it) { board.items.set(it.id, it); boardChanged(it); }
+  }
+}
 /* ---------- 가구 ---------- */
 function furnSig(it) { return [it.w, it.d, it.h, it.c, it.s, it.n].join('|'); }
 function buildFurnObject(it) {
@@ -2528,6 +2533,7 @@ function setupSun() {
   if (saved && typeof saved === 'object') for (const id in saved) { const it = cleanItem(saved[id]); if (it) board.items.set(it.id, it); }
   setupFurnPanel(); setupPins(); setupSun();
   for (const it of board.items.values()) if (it.k === 'f') renderFurn(it);
+  seedFurniture();
   renderAllPins(); renderPinList(); refreshFurnStatus();
   $('#toolMeasure').onclick = () => setTool(tool === 'measure' ? null : 'measure');
   $('#toolDone').onclick = () => setTool(null);
