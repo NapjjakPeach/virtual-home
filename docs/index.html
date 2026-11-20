@@ -221,7 +221,6 @@ table.areas td.diff{color:var(--oak)}
 .field input[type=date]{height:38px;border:1px solid var(--line);border-radius:10px;background:var(--surface-solid);padding:0 12px}
 input[type=range]{width:100%;accent-color:var(--oak)}
 label.btn{display:inline-flex;align-items:center;cursor:pointer}
-.sunread{margin:0;font-size:13px;line-height:1.5}
 @media (max-width:760px){
   .dock{left:auto;right:var(--gut-r);top:calc(var(--inset-t) + 170px);flex-direction:column;padding:4px}
   .dbtn{width:46px;font-size:10px}
@@ -272,8 +271,6 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 16.5 16.5 3 21 7.5 7.5 21z"/><path d="M7 13l2 2M10 10l1.5 1.5M13 7l2 2"/></svg>줄자</button>
     <button class="dbtn" id="toolPin" aria-expanded="false" aria-controls="panelPins">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg>메모</button>
-    <button class="dbtn" id="toolSun" aria-expanded="false" aria-controls="panelSun">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 18h18"/><path d="M7 18a5 5 0 0 1 10 0"/><path d="M12 6v2M5.6 9.6l1.4 1.4M18.4 9.6 17 11M3 14h2M19 14h2"/></svg>햇빛</button>
     <button class="dbtn" id="toolPoint" aria-pressed="false" title="누른 곳을 같이 보는 사람 화면에도 표시해요">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></svg>가리키기</button>
   </div>
@@ -359,18 +356,6 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
       <div class="chips" id="pinFilter"><button data-f="all" aria-pressed="true">전체</button><button data-f="todo" aria-pressed="false">남은 것</button><button data-f="done" aria-pressed="false">끝난 것</button></div>
       <div class="list" id="pinList"></div>
       <p class="note">체크하면 끝난 것으로 옮겨져요. 사야 할 물건을 적어 두면 구매 목록처럼 쓸 수 있어요.</p>
-    </div>
-  </aside>
-
-  <aside class="card panel" id="panelSun" hidden aria-label="햇빛">
-    <header><div><h2>햇빛</h2><p>날짜와 시각을 고르면 실제 해 위치로 빛이 들어와요</p></div><button class="xbtn" data-close aria-label="닫기">×</button></header>
-    <div class="body">
-      <div class="chips" id="sunSeason"><button data-md="3-20" aria-pressed="false">봄</button><button data-md="6-21" aria-pressed="false">여름</button><button data-md="9-22" aria-pressed="false">가을</button><button data-md="12-21" aria-pressed="false">겨울</button><button data-md="today" aria-pressed="false">오늘 지금</button></div>
-      <div class="field"><label class="label" for="sunDate">날짜</label><input type="date" id="sunDate"></div>
-      <div class="field"><label class="label" for="sunTime">시각 · <span id="sunTimeTxt"></span></label><input type="range" id="sunTime" min="300" max="1260" step="5"></div>
-      <div class="row"><button class="btn" id="sunPlay">하루 재생</button><button class="btn" id="sunReset">기본 조명으로</button></div>
-      <p class="sunread" id="sunRead"></p>
-      <p class="note">집 방향은 도면의 방위표(도면 위쪽에서 시계 방향으로 45° 돌아간 쪽이 북쪽)로, 해 위치는 우리 동네 위도·경도로 계산해요. 실사 조명은 한 시각의 빛으로 구워 둔 거라, 시간을 고르는 동안은 일반 조명으로 보여요.</p>
     </div>
   </aside>
 
@@ -598,8 +583,7 @@ Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, n
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 scene.add(sun);
 /* 집 꾸미기 상태 (아래 '집 꾸미기'에서 사용, 부팅 중에도 참조되므로 여기서 선언) */
-const GEO = { lat: 37.29, lon: 127.05, north: 314.8042, floor: 11, storey: 3.0, totalFloors: 15 };   // 대략 위치(해 계산용), 도면 방위표 회전각(°, 반시계), 우리 집 층·층고·건물 층수(추정)
-const SUN = { custom: false, y: 2026, m: 1, d: 1, min: 900, timer: 0 };
+const GEO = { north: 314.8042, floor: 11, storey: 3.0, totalFloors: 15 };   // 도면 방위표 회전각(°, 반시계), 우리 집 층·층고·건물 층수(추정)
 const board = { items: new Map(), room: null };
 const furnMeshes = new Map(), pinSprites = new Map(), furnState = new Map(), guides = [];
 const NAV = { cell: .1, grid: null, w: 0, h: 0, x0: 0, z0: 0, dirty: true };   // 클릭 이동 길 찾기 격자
@@ -1405,7 +1389,7 @@ function onRoomChange(room) {
 }
 
 /* ---------------- panels ---------------- */
-const PANELS = { panelPlan: '#btnPlan', panelPeople: '#btnPeople', panelFurn: '#toolFurn', panelPins: '#toolPin', panelSun: '#toolSun' };
+const PANELS = { panelPlan: '#btnPlan', panelPeople: '#btnPeople', panelFurn: '#toolFurn', panelPins: '#toolPin' };
 function togglePanel(id) {
   const el = document.getElementById(id), opening = el.hidden;
   for (const [p, b] of Object.entries(PANELS)) { document.getElementById(p).hidden = true; $(b).setAttribute('aria-expanded', 'false'); }
@@ -1666,7 +1650,7 @@ function attachBaked() {   // 구운 모양에 지금 재질(텍스처·광택)�
   });
 }
 function syncBaked() {
-  const ok = BAKED.want && !night && !SUN.custom && BAKED.meta && BAKED.meta.sig === planSig(plan);
+  const ok = BAKED.want && !night && BAKED.meta && BAKED.meta.sig === planSig(plan);
   if (BAKED.want && !BAKED.meta && !BAKED.loading) BAKED.loading = loadBaked().then(m => { if (m) syncBaked(); }).catch(e => console.warn('baked', e));
   if (!house) return;
   const targets = new Set(bakeTargets());
@@ -1841,14 +1825,13 @@ function applyLook() {
     for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap) mt.envMapIntensity = L.env;
   });
   syncBaked();
-  applySun();
   $('#btnNight').setAttribute('aria-pressed', night);
   $('#btnNight').setAttribute('aria-label', night ? '낮으로 바꾸기' : '밤으로 바꾸기');
   $('#nightTxt').textContent = night ? '낮' : '밤';
   const nb = $('#nightBtn2'); if (nb) nb.textContent = night ? '낮으로 보기' : '밤으로 보기';
   const cb = $('#ceilBtn'); if (cb) { cb.textContent = ceilOn ? '천장등 켜짐' : '천장등 꺼짐'; cb.setAttribute('aria-pressed', ceilOn); }
 }
-$('#btnNight').onclick = () => { if (SUN.custom) { SUN.custom = false; if (typeof syncSunInputs === 'function') syncSunInputs(); } night = !night; applyLook(); };
+$('#btnNight').onclick = () => { night = !night; applyLook(); };
 $('#btnBaked').onclick = () => { BAKED.want = !BAKED.want; store.set('vh.baked', BAKED.want); syncBaked(); };
 
 let hq = !isCoarse && store.get('vh.hq', true), composer = null, aoPass = null;
@@ -1997,7 +1980,7 @@ function createRoom() {
     onObj(fn) { objCb = fn; }
   };
 }
-/* ================= 집 꾸미기: 가구 · 줄자 · 메모 · 햇빛 =================
+/* ================= 집 꾸미기: 가구 · 줄자 · 메모 · 가리키기 =================
    가구·메모는 '보드' 항목으로 관리한다. 같은 주소(+?room)로 들어온 사람끼리 MQTT 중계로 실시간 공유하고
    (항목마다 retained 메시지), 각자 브라우저(localStorage)에도 사본을 둔다. 중계 서버가 기록을 잃어도
    다시 접속한 사람의 사본이 더 새로우면 다시 올려서 복구된다. 같은 항목은 나중에 바꾼 쪽(t)이 이긴다. */
@@ -2989,87 +2972,12 @@ function renderPinList() {
   }
 }
 
-/* ---------- 햇빛: 실제 해 위치 (suncalc 공식) ---------- */
-function solarPosition(date, lat, lon) {
-  const rad = Math.PI / 180, e = rad * 23.4397;
-  const d = date.valueOf() / 864e5 - .5 + 2440588 - 2451545;
-  const M = rad * (357.5291 + .98560028 * d);
-  const L = M + rad * (1.9148 * Math.sin(M) + .02 * Math.sin(2 * M) + .0003 * Math.sin(3 * M)) + rad * 102.9372 + Math.PI;
-  const dec = Math.asin(Math.sin(L) * Math.sin(e)), ra = Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L));
-  const H = rad * (280.16 + 360.9856235 * d) + rad * lon - ra, phi = rad * lat;
-  const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));   // 남쪽 기준, 서쪽이 +
-  const el = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
-  return { az: az + Math.PI, el };   // az: 북쪽 기준 시계 방향
-}
-const DIRS = ['북', '북동', '동', '남동', '남', '남서', '서', '북서'];
-function sunDate() { return new Date(Date.UTC(SUN.y, SUN.m - 1, SUN.d, 0, SUN.min) - 9 * 3600e3); }   // 한국 시간
-function applySun() {
-  if (!SUN.custom) { sun.position.set(-9, 8, 6); sun.color.set('#ffe7c4'); renderSunRead(); return; }
-  const { az, el } = solarPosition(sunDate(), GEO.lat, GEO.lon), elDeg = el * 180 / Math.PI;
-  const wantNight = elDeg < -1;
-  if (wantNight !== night) { night = wantNight; applyLook(); return; }
-  if (!night) {
-    const r = GEO.north * Math.PI / 180, N = [-Math.sin(r), Math.cos(r)], E = [Math.cos(r), Math.sin(r)];
-    const hx = E[0] * Math.sin(az) + N[0] * Math.cos(az), hy = E[1] * Math.sin(az) + N[1] * Math.cos(az);
-    const ce = Math.cos(Math.max(el, .02)), se = Math.sin(Math.max(el, .02)), R = 25;
-    sun.position.set(hx * ce * R, se * R, -hy * ce * R);
-    const f = clamp(elDeg / 15, 0, 1);
-    sun.intensity = LOOK.day.sun * (.35 + .65 * f);
-    sun.color.set('#ffa75e').lerp(new THREE.Color('#ffe9cc'), clamp(elDeg / 30, 0, 1));
-    hemi.intensity = LOOK.day.hemi * (.5 + .5 * f);
-  }
-  renderSunRead(az, elDeg);
-}
-function renderSunRead(az, elDeg) {
-  const out = $('#sunRead'); if (!out) return;
-  if (!SUN.custom) { out.textContent = '지금은 기본 조명이에요. 날짜나 시각을 고르면 실제 해 위치로 바뀌어요.'; return; }
-  if (elDeg < -1) { out.textContent = '해가 졌어요. 방마다 조명이 켜져요.'; return; }
-  const deg = (az * 180 / Math.PI + 360) % 360;
-  out.textContent = `해 높이 ${Math.round(elDeg)}° · ${DIRS[Math.round(deg / 45) % 8]}쪽(${Math.round(deg)}°)에서 비춰요`;
-}
-function fmtTime(min) { const h = Math.floor(min / 60), m = min % 60; return `${h < 12 ? '오전' : '오후'} ${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')}`; }
-function syncSunInputs() {
-  $('#sunDate').value = `${SUN.y}-${String(SUN.m).padStart(2, '0')}-${String(SUN.d).padStart(2, '0')}`;
-  $('#sunTime').value = SUN.min; $('#sunTimeTxt').textContent = fmtTime(SUN.min);
-  for (const b of document.querySelectorAll('#sunSeason button')) {
-    const [m, d] = (b.dataset.md || '').split('-').map(Number);
-    b.setAttribute('aria-pressed', SUN.custom && m === SUN.m && d === SUN.d);
-  }
-}
-function setSunCustom(on) {
-  const was = SUN.custom; SUN.custom = on;
-  if (!on && night) night = false;
-  if (on && !was && BAKED.active) toast('실사 조명은 한 시각으로 구운 빛이라, 지금은 일반 조명으로 보여줘요');
-  applyLook(); syncSunInputs();
-}
-function setupSun() {
-  const now = new Date(Date.now() + 9 * 3600e3);
-  SUN.y = now.getUTCFullYear(); SUN.m = now.getUTCMonth() + 1; SUN.d = now.getUTCDate(); SUN.min = 15 * 60;
-  for (const b of document.querySelectorAll('#sunSeason button')) b.onclick = () => {
-    if (b.dataset.md === 'today') { const t = new Date(Date.now() + 9 * 3600e3); SUN.m = t.getUTCMonth() + 1; SUN.d = t.getUTCDate(); SUN.min = Math.min(1260, Math.max(300, t.getUTCHours() * 60 + t.getUTCMinutes())); }
-    else { const [m, d] = b.dataset.md.split('-').map(Number); SUN.m = m; SUN.d = d; }
-    setSunCustom(true);
-  };
-  $('#sunDate').onchange = e => { const [y, m, d] = e.target.value.split('-').map(Number); if (y && m && d) { SUN.y = y; SUN.m = m; SUN.d = d; setSunCustom(true); } };
-  $('#sunTime').oninput = e => { SUN.min = Number(e.target.value); setSunCustom(true); };
-  $('#sunPlay').onclick = () => {
-    if (SUN.timer) { clearInterval(SUN.timer); SUN.timer = 0; $('#sunPlay').textContent = '하루 재생'; return; }
-    if (SUN.min >= 1255) SUN.min = 300;
-    $('#sunPlay').textContent = '멈춤';
-    SUN.timer = setInterval(() => {
-      SUN.min = Math.min(1260, SUN.min + 5); setSunCustom(true);
-      if (SUN.min >= 1260) { clearInterval(SUN.timer); SUN.timer = 0; $('#sunPlay').textContent = '하루 재생'; }
-    }, 80);
-  };
-  $('#sunReset').onclick = () => { if (SUN.timer) $('#sunPlay').click(); setSunCustom(false); };
-  syncSunInputs(); renderSunRead();
-}
 
 /* ---------- 시작 ---------- */
 (() => {
   const saved = store.get(BOARD_KEY, null);
   if (saved && typeof saved === 'object') for (const id in saved) { const it = cleanItem(saved[id]); if (it) board.items.set(it.id, it); }
-  setupFurnPanel(); setupPins(); setupSun();
+  setupFurnPanel(); setupPins();
   for (const it of board.items.values()) if (it.k === 'f') renderFurn(it);
   seedFurniture();
   renderAllPins(); renderPinList(); refreshFurnStatus();
@@ -3079,7 +2987,6 @@ function setupSun() {
   $('#toolClear').onclick = () => { clearMeasures(); setTool('measure'); };
   $('#toolFurn').onclick = () => { if ($('#panelFurn').hidden && state.mode !== 'top') setMode('top'); togglePanel('panelFurn'); };
   $('#toolPin').onclick = () => togglePanel('panelPins');
-  $('#toolSun').onclick = () => togglePanel('panelSun');
 })();
 
 room = createRoom();
