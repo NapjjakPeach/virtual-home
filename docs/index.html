@@ -239,7 +239,7 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
   <div class="toolbar">
     <div class="seg card" role="group" aria-label="보기 방식">
       <button id="modeWalk" aria-pressed="false">걷기</button>
-      <button id="modeTop" aria-pressed="true">위에서</button>
+      <button id="modeTop" aria-pressed="true">가구 배치</button>
     </div>
     <button class="tbtn" id="btnNight" aria-pressed="false" aria-label="밤으로 바꾸기" title="낮과 밤 바꾸기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><span class="txt" id="nightTxt">밤</span></button>
@@ -273,7 +273,7 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
 
   <div class="card bar" id="selbar" hidden>
     <b id="selName"></b><span class="mono" id="selDims"></span><span class="stat" id="selStat"></span>
-    <button id="selRot" title="R 키">90° 회전</button><button id="selDup">복제</button><button id="selEdit">치수</button><button id="selDel" title="Delete 키">삭제</button><button id="selClose" aria-label="선택 해제">×</button>
+    <button id="selRot" title="R 키 (Shift+R은 15°)">90° 회전</button><button id="selDup">복제</button><button id="selEdit">치수</button><button id="selDel" title="Delete 키">삭제</button><button id="selClose" aria-label="선택 해제">×</button>
   </div>
   <div class="card bar" id="toolbar2" hidden>
     <span id="toolMsg"></span><button id="toolClear">줄자 지우기</button><button id="toolDone">끝내기</button>
@@ -329,7 +329,7 @@ label.btn{display:inline-flex;align-items:center;cursor:pointer}
   </aside>
 
   <aside class="card panel" id="panelFurn" hidden aria-label="가구 배치">
-    <header><div><h2>가구 배치</h2><p>실제 치수로 놓고 끌어서 옮겨요 · R 회전 · Delete 삭제</p></div><button class="xbtn" data-close aria-label="닫기">×</button></header>
+    <header><div><h2>가구 배치</h2><p>가구 배치 모드에서 눌러 고르고 끌어서 옮겨요 · 10mm 단위</p></div><button class="xbtn" data-close aria-label="닫기">×</button></header>
     <div class="body">
       <section id="furnEdit" hidden style="display:flex;flex-direction:column;gap:10px">
         <div class="label">선택한 가구</div>
@@ -1115,6 +1115,9 @@ function setMode(mode) {
   if (house) for (const o of house.children) if (o.userData.floorLabel) o.visible = mode !== 'walk';
   furnGroup.traverse(o => { if (o.userData.furnLabel) o.visible = mode !== 'walk'; });
   if (mode === 'top') { orbit.tx = me.x * .3; orbit.tz = me.z * .3; }
+  if (mode === 'walk' && furnSel) selectFurn(null);   // 가구는 가구 배치 모드에서만 고친다
+  const hint = $('#hint');
+  if (hint) hint.innerHTML = mode === 'walk' ? '드래그 둘러보기 · <kbd>W A S D</kbd> 이동 · <kbd>Shift</kbd> 빠르게 · 바닥 클릭하면 그곳으로 걸어가요' : '가구를 눌러 고른 뒤 끌어서 옮겨요 · <kbd>방향키</kbd> 10mm · <kbd>Shift</kbd>+방향키 100mm · <kbd>R</kbd> 회전';
 }
 $('#modeWalk').onclick = () => setMode('walk');
 $('#modeTop').onclick = () => setMode('top');
@@ -1164,7 +1167,9 @@ function clickFloor(cx, cy) {
 
 addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input, textarea, select')) return;
-  const k = e.key.toLowerCase(); keys[k] = true; keys.shift = e.shiftKey;
+  const k = e.key.toLowerCase();
+  if (state.mode === 'top' && furnSel && k.startsWith('arrow')) { e.preventDefault(); return; }   // 가구 미세 이동은 아래 집 꾸미기에서
+  keys[k] = true; keys.shift = e.shiftKey;
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k.startsWith('arrow')) { if (state.mode === 'top' && !e.repeat && document.activeElement === canvas) setMode('walk'); }
 });
@@ -1994,6 +1999,10 @@ function seedFurniture() {
   }
 }
 /* ---------- 가구 ---------- */
+function snapWorld(x, z) {   // 도면 좌표로 10mm 단위에 맞춘다
+  const [px, py] = P(x, z), [sx, sz] = W(Math.round(px / 10) * 10, Math.round(py / 10) * 10);
+  return [Math.round(sx * 1e4) / 1e4, Math.round(sz * 1e4) / 1e4];
+}
 function furnSig(it) { return [it.w, it.d, it.h, it.c, it.s, it.n].join('|'); }
 function buildFurnObject(it) {
   const g = new THREE.Group(), W2 = it.w / 1000, D2 = it.d / 1000, H2 = Math.max(it.h, 8) / 1000;
@@ -2127,11 +2136,13 @@ function selectFurn(id) {
   furnSel = id; syncSelOutline(); renderSelbar(); renderFurnList(); renderFurnEdit();
 }
 function addFurniture(n, w, d, h, s, c) {
-  let x, z;
-  if (state.mode === 'walk') { x = me.x - Math.sin(me.yaw) * 1.4; z = me.z - Math.cos(me.yaw) * 1.4; }
-  else { x = orbit.tx; z = orbit.tz; const [px, py] = P(me.x, me.z); if (model.rooms.some(r => px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1)) { x = me.x; z = me.z; } }
-  const it = putItem({ id: newId(), k: 'f', n, w, d, h, s, c, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: 0 }, false);
-  if (it) { selectFurn(it.id); toast(`${it.n}을(를) 놓았어요. 끌어서 옮겨 보세요`); }
+  if (state.mode !== 'top') setMode('top');
+  let x = orbit.tx, z = orbit.tz;
+  const [px, py] = P(me.x, me.z);
+  if (model.rooms.some(r => px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1)) { x = me.x; z = me.z; }
+  [x, z] = snapWorld(x, z);
+  const it = putItem({ id: newId(), k: 'f', n, w, d, h, s, c, x, z, r: 0 }, false);
+  if (it) { orbit.tx = it.x; orbit.tz = it.z; selectFurn(it.id); toast(`${it.n}을(를) 놓았어요. 끌어서 옮겨 보세요`); }
 }
 function rotateSel(step) {
   const it = furnSel && board.items.get(furnSel); if (!it) return;
@@ -2144,7 +2155,8 @@ function deleteSel() {
 }
 function duplicateSel() {
   const it = furnSel && board.items.get(furnSel); if (!it) return;
-  const c = putItem(Object.assign({}, it, { id: newId(), o: 0, x: it.x + .3, z: it.z + .3 }), false);
+  const [dx, dz] = snapWorld(it.x + .3, it.z + .3);
+  const c = putItem(Object.assign({}, it, { id: newId(), o: 0, x: dx, z: dz }), false);
   if (c) selectFurn(c.id);
 }
 
@@ -2164,7 +2176,7 @@ function renderFurnList() {
   const box = $('#furnList'); if (!box) return;
   const list = furnItems(); box.textContent = '';
   $('#furnCount').textContent = list.length ? `(${list.length})` : '';
-  if (!list.length) { const p = document.createElement('p'); p.className = 'note'; p.textContent = '아직 놓은 가구가 없어요. 위에서 하나 골라 보세요.'; box.append(p); return; }
+  if (!list.length) { const p = document.createElement('p'); p.className = 'note'; p.textContent = '아직 놓은 가구가 없어요. 자주 쓰는 가구에서 하나 골라 보세요.'; box.append(p); return; }
   for (const it of list) {
     const st = furnState.get(it.id) || { level: 'ok', msg: '' };
     const row = document.createElement('div'); row.className = 'item' + (it.id === furnSel ? ' sel' : '');
@@ -2326,21 +2338,22 @@ function hitFurn(cx, cy) {
 }
 let furnDrag = null;
 function toolPointerDown(e) {
-  if (tool || (e.button !== undefined && e.button !== 0)) return false;
-  const id = hitFurn(e.clientX, e.clientY); if (!id) return false;
+  if (tool || state.mode !== 'top' || (e.button !== undefined && e.button !== 0)) return false;
+  const id = hitFurn(e.clientX, e.clientY);
+  if (!id || id !== furnSel) return false;   // 처음 누르면 고르기만 (끌기는 고른 다음부터)
   const it = board.items.get(id);
   if (!it || !rayAt(e.clientX, e.clientY).ray.intersectPlane(floorPlane, tmpV)) return false;
   furnDrag = { pid: e.pointerId, id, ox: tmpV.x - it.x, oz: tmpV.z - it.z, x0: e.clientX, y0: e.clientY, moved: false };
-  selectFurn(id);
   return true;
 }
 function toolPointerMove(e) {
   if (furnDrag && e.pointerId === furnDrag.pid) {
-    if (!furnDrag.moved && Math.hypot(e.clientX - furnDrag.x0, e.clientY - furnDrag.y0) < 5) return true;
+    if (!furnDrag.moved && Math.hypot(e.clientX - furnDrag.x0, e.clientY - furnDrag.y0) < 8) return true;
     furnDrag.moved = true;
     if (!rayAt(e.clientX, e.clientY).ray.intersectPlane(floorPlane, tmpV)) return true;
     const it = board.items.get(furnDrag.id); if (!it) { furnDrag = null; return true; }
-    putItem(Object.assign({}, it, { x: Math.round((tmpV.x - furnDrag.ox) * 100) / 100, z: Math.round((tmpV.z - furnDrag.oz) * 100) / 100 }), true);
+    const [nx, nz] = snapWorld(tmpV.x - furnDrag.ox, tmpV.z - furnDrag.oz);
+    if (nx !== it.x || nz !== it.z) putItem(Object.assign({}, it, { x: nx, z: nz }), true);
     return true;
   }
   if (tool === 'measure' && measure.a && !ptrs.size && e.pointerType === 'mouse') measureHover(e.clientX, e.clientY);
@@ -2357,13 +2370,26 @@ function toolClick(cx, cy) {
   if (tool === 'measure') { const h = hitSurface(cx, cy); if (h) measureClick(h); return true; }
   if (tool === 'pin') { const h = hitSurface(cx, cy); if (h) { setTool(null); openPinEditor(null, h); } return true; }
   const pid = hitPin(cx, cy); if (pid) { openPinEditor(pid); return true; }
+  if (state.mode === 'top') { const fid = hitFurn(cx, cy); if (fid) { if (fid !== furnSel) selectFurn(fid); return true; } }
   if (furnSel) { selectFurn(null); return true; }
   return false;
 }
 addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input, textarea, select')) return;
   if (e.key === 'Escape') { if (!$('#pinpop').hidden) closePinEditor(); else if (tool) setTool(null); else if (furnSel) selectFurn(null); return; }
-  if (!furnSel) return;
+  if (!furnSel || state.mode !== 'top') return;
+  if (e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    const it = board.items.get(furnSel); if (!it) return;
+    const fx = orbit.tx - camera.position.x, fz = orbit.tz - camera.position.z, fl = Math.hypot(fx, fz) || 1;
+    const f = [fx / fl, fz / fl], r = [-f[1], f[0]];   // 화면 위쪽(앞) · 오른쪽
+    const v = { ArrowUp: f, ArrowDown: [-f[0], -f[1]], ArrowRight: r, ArrowLeft: [-r[0], -r[1]] }[e.key];
+    const step = (e.shiftKey ? 100 : 10) / 1000;
+    const dx = Math.abs(v[0]) >= Math.abs(v[1]) ? Math.sign(v[0]) * step : 0, dz = dx ? 0 : Math.sign(v[1]) * step;   // 가까운 축으로
+    const [nx, nz] = snapWorld(it.x + dx, it.z + dz);
+    putItem(Object.assign({}, it, { x: nx, z: nz }), false);
+    return;
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSel(); }
   else if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') rotateSel(e.shiftKey ? Math.PI / 12 : Math.PI / 2);
 });
@@ -2538,7 +2564,7 @@ function setupSun() {
   $('#toolMeasure').onclick = () => setTool(tool === 'measure' ? null : 'measure');
   $('#toolDone').onclick = () => setTool(null);
   $('#toolClear').onclick = () => { clearMeasures(); setTool('measure'); };
-  $('#toolFurn').onclick = () => togglePanel('panelFurn');
+  $('#toolFurn').onclick = () => { if ($('#panelFurn').hidden && state.mode !== 'top') setMode('top'); togglePanel('panelFurn'); };
   $('#toolPin').onclick = () => togglePanel('panelPins');
   $('#toolSun').onclick = () => togglePanel('panelSun');
 })();
