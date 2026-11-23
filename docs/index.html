@@ -403,25 +403,25 @@ const DEFAULT_PLAN = {
   wallH: 2400, doorH: 2100, wallT: 250,
   origin: [1133, 790],
   xSpans: [900, 2700, 1509, 2400, 1200, 1200],
-  ySpans: [1900, 1400, 1850, 1150, 1747, 1253],
+  ySpans: [1900, 1400, 1850, 1150, 2285, 715],
   rooms: [
     { id: 'entry',   name: '현관',   r: [3,1,4,2], floor: 'entry', area: 2.80 , wall: 'warm' },
     { id: 'living',  name: '거실',   r: [1,0,2,2], floor: 'wood',  area: 8.91 , wall: 'warm' },
     { id: 'balcony', name: '발코니', r: [0,0,1,2], floor: 'tile' , wall: 'ext' },
     { id: 'kitchen', name: '주방',   r: [0,2,2,4], floor: 'wood',  area: 10.80 , wall: 'warm' },
     { id: 'room1',   name: '방 1',   r: [0,4,2,6], floor: 'wood',  area: 10.80 , wall: 'mint' },
-    { id: 'hall',    name: '복도',   r: [2,0,3,6], floor: 'wood',  area: 14.07 , wall: 'warm' },
+    { id: 'hall',    name: '복도',   r: [2,0,3,5], floor: 'wood',  area: 14.07 , wall: 'warm' },
     { id: 'bath',    name: '화장실', r: [3,2,4,3], floor: 'tile',  area: 4.44 , wall: 'tile' },
     { id: 'laundry', name: '세탁실', r: [3,3,4,4], floor: 'tile',  area: 2.76 , wall: 'tile' },
     { id: 'room2',   name: '방 2',   r: [3,4,5,6], floor: 'wood',  area: 10.80 , wall: 'cool' },
-    { id: 'acroom',  name: '실외기실', r: [2,6,3,6], pad: [0,125,0,825], floor: 'concrete', outside: true },
+    { id: 'acroom',  name: '실외기실', r: [2,5,3,6], pad: [0,125,0,125], floor: 'concrete', outside: true },
     { id: 'common1', name: '공용복도', r: [3,0,4,1], floor: 'concrete', outside: true },
     { id: 'common2', name: '공용 공간', r: [4,0,6,4], floor: 'concrete', outside: true }
   ],
   walls: [
     { id: 'west',    a: [0,0], b: [0,6] },
     { id: 'north1',  a: [0,6], b: [2,6] },
-    { id: 'northH',  a: [2,6], b: [3,6] },
+    { id: 'northH',  a: [2,5], b: [3,5] },
     { id: 'north2',  a: [3,6], b: [5,6] },
     { id: 'east2',   a: [5,4], b: [5,6] },
     { id: 'south',   a: [0,0], b: [3,0] },
@@ -431,17 +431,18 @@ const DEFAULT_PLAN = {
     { id: 'gWall',   a: [6,0], b: [6,4] },
     { id: 'y4east',  a: [3,4], b: [6,4] },
     { id: 'cNorth',  a: [2,4], b: [2,6] },
-    { id: 'dNorth',  a: [3,2], b: [3,6] },
+    { id: 'dNorth',  a: [3,2,-45,0], b: [3,4,-45,0], t: 160 },   // 화장실·세탁실 쪽 벽은 160mm
+    { id: 'dNorthB', a: [3,4], b: [3,6] },
     { id: 'y2west',  a: [0,2], b: [2,2] },
     { id: 'y2east',  a: [3,2], b: [4,2] },
-    { id: 'y3',      a: [3,3], b: [4,3] },
+    { id: 'y3',      a: [3,3], b: [4,3], t: 160 },
     { id: 'y4west',  a: [0,4], b: [2,4] },
     { id: 'bWall',   a: [1,0], b: [1,2] }
   ],
   openings: [
     { wall: 'west',   type: 'window', at: 3900, w: 1800, sill: 1000, h: 1100 },
     { wall: 'west',   type: 'window', at: 300,  w: 2700, sill: 900,  h: 1300 },
-    { wall: 'west',   type: 'window', at: 6500, w: 2600, sill: 1000, h: 1250 },
+    { wall: 'west',   type: 'window', at: 6725, w: 2150, sill: 1000, h: 1250 },
     { wall: 'northH', type: 'slide',  at: 150,  w: 1209, sill: 0,    h: 2100 },
     { wall: 'east2',  type: 'window', at: 425,  w: 2150, sill: 900,  h: 1200 },
     { wall: 'bWall',  type: 'slide',  at: 125,  w: 2200, sill: 0,    h: 2200 },
@@ -449,38 +450,39 @@ const DEFAULT_PLAN = {
     { wall: 'cNorth', type: 'door',   at: 125,  w: 835, hinge: 'start', swing: 1 },
     { wall: 'dNorth', type: 'door',   at: 125,  w: 835, hinge: 'start', swing: -1 },
     { wall: 'dNorth', type: 'door',   at: 2160, w: 650, hinge: 'start', swing: -1 },
-    { wall: 'dNorth', type: 'door',   at: 3125, w: 835, hinge: 'start', swing: -1 }
+    { wall: 'dNorthB', type: 'door',  at: 125,  w: 835, hinge: 'start', swing: -1 }
   ],
   fixtures: [
-    { name: '주방 하부장', ref: [0,4], x: 125, y: -725, w: 3475, d: 600, h: 850, color: '#f1efea' },
-    { name: '상판',       ref: [0,4], x: 125, y: -735, w: 3475, d: 610, h: 30, z: 850, color: '#e2ded6' },
+    { name: '주방 하부장', ref: [0,4], x: 125, y: -725, w: 2950, d: 600, h: 850, color: '#f1efea' },
+    { name: '상판',       ref: [0,4], x: 125, y: -735, w: 2950, d: 610, h: 30, z: 850, color: '#e2ded6' },
     { name: '개수대',     ref: [0,4], x: 450, y: -660, w: 800, d: 460, h: 8, z: 878, color: '#aab0b6' },
-    { name: '주방 벽 타일', ref: [0,4], x: 125, y: -145, w: 3475, d: 20, h: 670, z: 880, color: '#ffffff', tex: 'tile' },
+    { name: '주방 벽 타일', ref: [0,4], x: 125, y: -145, w: 2950, d: 20, h: 670, z: 880, color: '#ffffff', tex: 'tile' },
     { name: '주방 수전',  ref: [0,4], x: 825, y: -235, w: 50, d: 50, h: 300, z: 880, color: '#dddddd', kind: 'faucet' },
-    { name: '쿡탑',       ref: [0,4], x: 2700, y: -660, w: 580, d: 500, h: 8, z: 880, color: '#111111', kind: 'cooktop' },
-    { name: '레인지후드', ref: [0,4], x: 2640, y: -475, w: 700, d: 350, h: 120, z: 1430, color: '#b9bdc1', kind: 'hood' },
-    { name: '상부장',     ref: [0,4], x: 125, y: -475, w: 3475, d: 350, h: 700, z: 1550, color: '#f6f4ef' },
+    { name: '쿡탑',       ref: [0,4], x: 2175, y: -660, w: 580, d: 500, h: 8, z: 880, color: '#111111', kind: 'cooktop' },
+    { name: '레인지후드', ref: [0,4], x: 2115, y: -475, w: 700, d: 350, h: 120, z: 1430, color: '#b9bdc1', kind: 'hood' },
+    { name: '상부장',     ref: [0,4], x: 125, y: -475, w: 2950, d: 350, h: 700, z: 1550, color: '#f6f4ef' },
     { name: '욕조',       ref: [4,2], x: -825, y: 175, w: 700, d: 1500, h: 550, color: '#f7f6f2', kind: 'tub' },
     { name: '욕조 수전',  ref: [4,2], x: -185, y: 1450, w: 50, d: 50, h: 160, z: 700, color: '#dddddd', kind: 'faucet', front: '-x' },
-    { name: '변기',       ref: [3,3], x: 610, y: -805, w: 380, d: 680, h: 420, color: '#fbfbf9', kind: 'toilet' },
-    { name: '세면 카운터', ref: [3,3], x: 125, y: -575, w: 1450, d: 450, h: 40, z: 800, color: '#efe8d8' },
-    { name: '세면대',     ref: [3,3], x: 1050, y: -575, w: 500, d: 450, h: 140, z: 720, color: '#fbfbf9', kind: 'sink', counter: true },
-    { name: '세면대 수전', ref: [3,3], x: 1275, y: -215, w: 50, d: 50, h: 180, z: 860, color: '#dddddd', kind: 'faucet' },
-    { name: '거울장',     ref: [3,3], x: 500, y: -275, w: 1050, d: 150, h: 700, z: 1250, color: '#dde4e8', kind: 'mirror' },
-    { name: '실외기실 바닥판', ref: [2,6], x: -125, y: 125, w: 1759, d: 700, h: 250, z: -260, color: '#8f8a83' },
-    { name: '실외기실 옆벽', ref: [2,6], x: -125, y: 125, w: 250, d: 700, h: 2400, color: '#eeebe5', solid: true },
-    { name: '실외기실 옆벽', ref: [2,6], x: 1384, y: 125, w: 250, d: 700, h: 2400, color: '#eeebe5', solid: true },
-    { name: '난간',       ref: [2,6], x: 125, y: 770, w: 1259, d: 40, h: 1100, color: '#f4f4f2', kind: 'railing', solid: true },
-    { name: '실외기',     ref: [2,6], x: 300, y: 420, w: 850, d: 320, h: 620, color: '#e9e6df', kind: 'acunit' },
+    { name: '변기',       ref: [3,3], x: 610, y: -760, w: 380, d: 680, h: 420, color: '#fbfbf9', kind: 'toilet' },
+    { name: '세면 카운터', ref: [3,3], x: 35, y: -530, w: 1540, d: 450, h: 40, z: 800, color: '#efe8d8' },
+    { name: '세면대',     ref: [3,3], x: 1050, y: -530, w: 500, d: 450, h: 140, z: 720, color: '#fbfbf9', kind: 'sink', counter: true },
+    { name: '세면대 수전', ref: [3,3], x: 1275, y: -170, w: 50, d: 50, h: 180, z: 860, color: '#dddddd', kind: 'faucet' },
+    { name: '거울장',     ref: [3,3], x: 500, y: -230, w: 1050, d: 150, h: 700, z: 1250, color: '#dde4e8', kind: 'mirror' },
+    { name: '실외기실 바닥판', ref: [2,5], x: -125, y: 125, w: 1759, d: 715, h: 250, z: -260, color: '#8f8a83' },
+    { name: '난간',       ref: [2,5], x: 125, y: 795, w: 1259, d: 40, h: 1100, color: '#f4f4f2', kind: 'railing', solid: true },
+    { name: '실외기',     ref: [2,5], x: 300, y: 300, w: 850, d: 320, h: 620, color: '#e9e6df', kind: 'acunit' },
+    { name: '주방 기둥',  ref: [0,4], x: 3075, y: -1075, w: 650, d: 950, h: 2400, color: '#ebe6da', solid: true },
     { name: '신발장',     ref: [4,1], x: -525, y: 125, w: 400, d: 1150, h: 2100, color: '#eeebe5' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 300, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 707, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' },
     { name: '펜던트 조명', ref: [0,2], x: 2383, y: 1114, w: 300, d: 300, h: 0, z: 1650, color: '#1f1f1f', kind: 'pendant' }
   ],
   // 처음 들어온 사람에게 기본으로 놓이는 가구 (끌어서 옮기거나 지울 수 있음, 위치는 도면 mm)
+  // t: 기본값 판 번호. 올리면 아무도 손대지 않은 기본 가구가 새 값으로 바뀐다 (누가 옮긴 건 그대로)
   furniture: [
-    { id: 'bed0room2', n: '침대', w: 1700, d: 2000, h: 450, s: 'bed', c: '#e9e3d9', px: 8717, py: 8590, rot: -90 },
-    { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 }
+    { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 450, s: 'bed', c: '#e9e3d9', px: 8617, py: 8590, rot: -90, t: 2 },
+    { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
+    { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 630, h: 1800, s: 'fridge', c: '#cfd3d6', px: 2117, py: 4530, rot: 180 }
   ]
 };
 
@@ -2106,12 +2108,15 @@ function attachBoard(r) {
   });
 }
 
-/* 도면 데이터의 기본 가구: 보드에 같은 id가 한 번도 없었을 때만 놓는다 (t=1이라 누가 옮기거나 지우면 그쪽이 이김) */
+/* 도면 데이터의 기본 가구: 보드에 없거나, 보드의 것이 더 옛 기본값(t가 작음)일 때만 놓는다.
+   t는 1, 2 같은 작은 판 번호라 누가 옮기거나 지우면(t=시각) 그쪽이 이김 */
 function seedFurniture() {
   for (const f of (plan.furniture || [])) {
-    if (!f || !ID_RE.test(f.id) || board.items.has(f.id)) continue;
+    if (!f || !ID_RE.test(f.id)) continue;
+    const rev = Math.max(1, Math.min(1e6, Math.floor(Number(f.t) || 1))), cur = board.items.get(f.id);
+    if (cur && cur.t >= rev) continue;
     const [x, z] = W(Number(f.px) || 0, Number(f.py) || 0);
-    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1e4) / 1e4, z: Math.round(z * 1e4) / 1e4, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: 1 });
+    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1e4) / 1e4, z: Math.round(z * 1e4) / 1e4, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: rev });
     if (it) { board.items.set(it.id, it); boardChanged(it); }
   }
 }
@@ -3027,7 +3032,7 @@ function renderPinList() {
 
 room = createRoom();
 if (room) attachBoard(room);
-if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, get model() { return model; } };   // 테스트용 (?debug일 때만)
+if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, get model() { return model; } };   // 테스트용 (?debug일 때만)
 if (!room) { connState = 'solo'; setConn('solo'); renderPeople(); }
 else {
   connState = 'wait'; setConn('wait');
