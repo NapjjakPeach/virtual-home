@@ -1522,7 +1522,8 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
   const k = e.pointerType === 'touch' ? .006 : .0045;
-  if (state.mode === 'walk') { me.yaw += dx * k; me.pitch = clamp(me.pitch + dy * k, -1.2, 1.2); }
+  const sg = e.pointerType === 'touch' ? -1 : 1;   // 터치는 손가락 가는 쪽으로 고개를 돌린다 (마우스는 화면을 잡아끄는 방향 그대로)
+  if (state.mode === 'walk') { me.yaw += sg * dx * k; me.pitch = clamp(me.pitch + sg * dy * k, -1.2, 1.2); }
   else { orbit.az -= dx * .006; orbit.pol = clamp(orbit.pol - dy * .005, .12, 1.45); }
 });
 const endPtr = e => {
