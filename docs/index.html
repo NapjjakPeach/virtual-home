@@ -2162,7 +2162,7 @@ const FLOOR_REFLECT_SHADER = {
       c /= 25.0;
       float m = texture2D(tMask, (vW.xz - maskB.xy) / (maskB.zw - maskB.xy)).r;
       vec3 V = normalize(cameraPosition - vW);
-      float fr = .1 + .55 * pow(1.0 - clamp(V.y, 0.0, 1.0), 2.5);   // 비스듬히 볼수록 강하게 (프레넬)
+      float fr = .03 + .18 * pow(1.0 - clamp(V.y, 0.0, 1.0), 3.0);   // 비스듬히 볼수록 강하게 (프레넬). 너무 번쩍이지 않게 은은히
       gl_FragColor = vec4(c, fr * m);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
