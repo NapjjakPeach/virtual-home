@@ -1,5 +1,5 @@
 {
- "sig": "8e054f28",
+ "sig": "64de1361",
  "lightmap": "lightmap.png",
  "range": 4.0,
  "intensity": 3.141592653589793,
@@ -10,5 +10,5 @@
  "samples": 1024,
  "sunW": 9.0,
  "sky": 1.0,
- "bakedAt": "20261124102415"
+ "bakedAt": "20261124141136"
 }

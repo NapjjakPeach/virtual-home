@@ -462,12 +462,14 @@ const DEFAULT_PLAN = {
     { name: '쿡탑',       ref: [0,4], x: 2175, y: -660, w: 580, d: 500, h: 8, z: 880, color: '#111111', kind: 'cooktop' },
     { name: '레인지후드', ref: [0,4], x: 2115, y: -475, w: 700, d: 350, h: 120, z: 1430, color: '#b9bdc1', kind: 'hood' },
     { name: '상부장',     ref: [0,4], x: 125, y: -475, w: 2950, d: 350, h: 700, z: 1550, color: '#f6f4ef', kind: 'cabinet', handle: 'bottom' },
-    { name: '욕조',       ref: [4,2], x: -825, y: 175, w: 700, d: 1500, h: 550, color: '#f7f6f2', kind: 'tub' },
-    { name: '욕조 수전',  ref: [4,2], x: -185, y: 1450, w: 50, d: 50, h: 160, z: 700, color: '#dddddd', kind: 'faucet', front: '-x' },
+    { name: '욕조', ref: [4,2], x: -825, y: 170, w: 700, d: 1600, h: 550, color: '#f0e7d6', kind: 'tub' },
+    { name: '욕조 수전·샤워기', ref: [3,3], x: 1925, y: -140, w: 80, d: 60, h: 1100, z: 750, color: '#dddddd', kind: 'shower' },
+    { name: '유리 선반', ref: [4,2], x: -245, y: 1150, w: 120, d: 450, h: 8, z: 1500, color: '#d8e6ec', kind: 'glassshelf' },
+    { name: '유리 선반', ref: [4,2], x: -245, y: 1150, w: 120, d: 450, h: 8, z: 1780, color: '#d8e6ec', kind: 'glassshelf' },
+    { name: '세면대', ref: [3,3], x: 35, y: -530, w: 1540, d: 450, h: 90, z: 750, color: '#f0e7d6', kind: 'vanity', basin: 1265 },
+    { name: '세면대 수전', ref: [3,3], x: 1275, y: -170, w: 50, d: 50, h: 180, z: 840, color: '#dddddd', kind: 'faucet' },
+    { name: '오픈 선반', ref: [3,3], x: 40, y: -230, w: 420, d: 150, h: 700, z: 1250, color: '#b98a5a', kind: 'openshelf' },
     { name: '변기',       ref: [3,3], x: 610, y: -760, w: 380, d: 680, h: 420, color: '#fbfbf9', kind: 'toilet' },
-    { name: '세면 카운터', ref: [3,3], x: 35, y: -530, w: 1540, d: 450, h: 40, z: 800, color: '#efe8d8' },
-    { name: '세면대',     ref: [3,3], x: 1050, y: -530, w: 500, d: 450, h: 140, z: 720, color: '#fbfbf9', kind: 'sink', counter: true },
-    { name: '세면대 수전', ref: [3,3], x: 1275, y: -170, w: 50, d: 50, h: 180, z: 860, color: '#dddddd', kind: 'faucet' },
     { name: '거울장',     ref: [3,3], x: 500, y: -230, w: 1050, d: 150, h: 700, z: 1250, color: '#dde4e8', kind: 'mirror' },
     { name: '실외기실 바닥판', ref: [2,5], x: -125, y: 125, w: 1759, d: 715, h: 250, z: -260, color: '#8f8a83' },
     { name: '난간',       ref: [2,5], x: 125, y: 795, w: 1259, d: 40, h: 1100, color: '#f4f4f2', kind: 'railing', solid: true },
@@ -1001,7 +1003,8 @@ const MAT = {
   steel: std({ color: '#b9bdc1', roughness: .35, metalness: .85 }),
   black: std({ color: '#121314', roughness: .12, metalness: .2 }),
   porcelain: std({ color: '#fbfbf9', roughness: .12 }),
-  mirror: std({ color: '#eef3f5', roughness: .03, metalness: 1 }),
+  acryl: std({ color: '#f0e7d6', roughness: .22, side: THREE.DoubleSide }),   // 영상 속 욕조·세면대: 아이보리 아크릴
+  mirror: std({ color: '#eef3f5', roughness: .03, metalness: .85, emissive: '#9aa3a6', emissiveIntensity: .55 }),   // 방이 밝게 비친 거울 (반사만으로는 어둡게 나와서 빛을 조금 더함)
   switchp: std({ color: '#f4f2ec', roughness: .4 }),
   shade: std({ color: '#1f1f1f', roughness: .35, metalness: .3, side: THREE.DoubleSide }),
   lamp: std({ color: '#fffaf0', emissive: '#ffe0b0', emissiveIntensity: LOOK.day.lamp, roughness: .6 })
@@ -1171,6 +1174,23 @@ function addOutlets(m, roomAt) {
   }
 }
 
+/* 둥근 직사각형 둘레 점 [x, z] (반시계) */
+function rrPts(w, d, r, seg) {
+  const hw = w / 2 - r, hd = d / 2 - r, pts = [];
+  for (const [cx, cz, a0] of [[hw, hd, 0], [-hw, hd, 90], [-hw, -hd, 180], [hw, -hd, 270]])
+    for (let i = 0; i <= seg; i++) { const a = (a0 + 90 * i / seg) * Math.PI / 180; pts.push([cx + r * Math.cos(a), cz + r * Math.sin(a)]); }
+  return pts;
+}
+/* 두 둘레(같은 점 개수)를 높이 ya, yb에서 이어 붙인 벽 */
+function loftRings(A, ya, B, yb) {
+  const pos = [], n = A.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, a0 = [A[i][0], ya, -A[i][1]], a1 = [A[j][0], ya, -A[j][1]], b0 = [B[i][0], yb, -B[i][1]], b1 = [B[j][0], yb, -B[j][1]];
+    pos.push(...a0, ...b0, ...b1, ...a0, ...b1, ...a1);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+}
+
 /* 설비 모양 (도면 데이터의 kind 값) */
 function addMesh(geo, mat, x, y, z, opts = {}) {
   const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
@@ -1187,14 +1207,53 @@ const FIX = {
     addMesh(new THREE.CylinderGeometry(.19, .15, .2, 28), MAT.porcelain, X, .3, bz, { sz: 1.3 });    // 변기
     addMesh(new THREE.CylinderGeometry(.195, .195, .025, 28), MAT.porcelain, X, .415, bz, { sz: 1.3 }); // 시트
   },
-  tub({ X, Z, Wd, Dd, Hh }) {
-    const t = .07;
-    addBox(house, Wd, .06, Dd, X, .03, Z, 0, MAT.porcelain);                        // 바닥
-    addBox(house, Wd, Hh, t, X, Hh / 2, Z - Dd / 2 + t / 2, 0, MAT.porcelain);
-    addBox(house, Wd, Hh, t, X, Hh / 2, Z + Dd / 2 - t / 2, 0, MAT.porcelain);
-    addBox(house, t, Hh, Dd, X - Wd / 2 + t / 2, Hh / 2, Z, 0, MAT.porcelain);
-    addBox(house, t, Hh, Dd, X + Wd / 2 - t / 2, Hh / 2, Z, 0, MAT.porcelain);
-    addBox(house, Wd - 2 * t, .32, Dd - 2 * t, X, .22, Z, 0, MAT.porcelain);        // 안쪽 바닥(높여서 깊이감)
+  tub({ X, Z, Wd, Dd, Hh }) {   // 붙박이 욕조: 평평한 앞판 + 둥근 모서리 테두리 + 아래로 좁아지는 안쪽 (영상처럼 아이보리)
+    const rim = .075, wall = new THREE.Shape();
+    wall.moveTo(-Wd / 2, -Dd / 2); wall.lineTo(Wd / 2, -Dd / 2); wall.lineTo(Wd / 2, Dd / 2); wall.lineTo(-Wd / 2, Dd / 2); wall.closePath();
+    const top = rrPts(Wd - 2 * rim, Dd - 2 * rim, .11, 8), bot = rrPts(Wd - 2 * rim - .14, Dd - 2 * rim - .2, .09, 8);
+    wall.holes.push(new THREE.Path(top.map(([x, z]) => new THREE.Vector2(x, z)).reverse()));
+    const shell = new THREE.ExtrudeGeometry(wall, { depth: Hh, bevelEnabled: false });
+    shell.rotateX(-Math.PI / 2);   // 모양의 y → 월드 -z, 밀어낸 방향 → 위
+    addMesh(shell, MAT.acryl, X, 0, Z);
+    const yb = .12, yt = Hh - .015;   // 안쪽 벽: 위 둘레 → 아래 둘레
+    addMesh(loftRings(top, yt, bot, yb), MAT.acryl, X, 0, Z, { cast: false });
+    const floor = new THREE.ShapeGeometry(new THREE.Shape(bot.map(([x, z]) => new THREE.Vector2(x, z)))); floor.rotateX(-Math.PI / 2);
+    addMesh(floor, MAT.acryl, X, yb, Z, { cast: false });
+    addMesh(new THREE.CylinderGeometry(.03, .03, .004, 24), MAT.chrome, X, yb + .003, Z - (Dd / 2 - rim - .2), { cast: false });   // 배수구
+  },
+  vanity({ X, Z, Wd, Dd, Y0, Hh, f }) {   // 카운터와 세면볼이 한 덩어리 (앞으로 볼록한 볼, 아래로 볼록 튀어나온 바닥)
+    const bx = (f.basin || f.w / 2) / 1000 - Wd / 2, br = .23, fy = -Dd / 2;   // 모양 좌표: x 오른쪽, y 뒤쪽(+) / 앞쪽(-) → 눕히면 앞이 월드 +z (도면 -y)
+    const s = new THREE.Shape();
+    s.moveTo(-Wd / 2, Dd / 2); s.lineTo(Wd / 2, Dd / 2); s.lineTo(Wd / 2, fy + .03);
+    s.lineTo(bx + br, fy); s.absellipse(bx, fy, br, .17, 0, Math.PI, true);   // 영상처럼 앞으로 크게 볼록 s.lineTo(-Wd / 2 + .05, fy);
+    s.quadraticCurveTo(-Wd / 2, fy, -Wd / 2, fy + .05); s.closePath();
+    const hole = new THREE.Path(); hole.absellipse(bx, fy + .03, .2, .17, 0, Math.PI * 2, false); s.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(s, { depth: Hh, bevelEnabled: true, bevelSize: .008, bevelThickness: .008, bevelSegments: 3, curveSegments: 32 });
+    g.rotateX(-Math.PI / 2);
+    addMesh(g, MAT.acryl, X, Y0, Z);
+    const front = Dd / 2;
+    const bowl = addMesh(new THREE.SphereGeometry(1, 36, 14, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), MAT.acryl, X + bx, Y0 + Hh, Z + (front - .03), { cast: false });
+    bowl.scale.set(.2, .17, .17);
+    addMesh(new THREE.CylinderGeometry(.018, .018, .004, 20), MAT.chrome, X + bx, Y0 + Hh - .168, Z + (front - .03), { cast: false });   // 배수구
+  },
+  openshelf({ X, Z, Wd, Dd, Y0, Hh, f }) {   // 거울 옆 나무 오픈 선반 (칸 3개 + 아래 수건걸이)
+    const mt = fixMat(f.color), T = .016, back = Z - Dd / 2;
+    addBox(house, Wd, Hh, .01, X, Y0 + Hh / 2, back + .005, 0, mt);
+    for (const sx of [-1, 1]) addBox(house, T, Hh, Dd, X + sx * (Wd / 2 - T / 2), Y0 + Hh / 2, Z, 0, mt);
+    for (let k = 0; k <= 3; k++) addBox(house, Wd - 2 * T, T, Dd - .01, X, Y0 + T / 2 + (Hh - T) * k / 3, Z + .005, 0, mt);
+    addMesh(new THREE.CylinderGeometry(.006, .006, Wd - .06, 10), MAT.chrome, X, Y0 + Hh * .12, Z + Dd / 2 - .02, { cast: false }).rotation.z = Math.PI / 2;
+  },
+  glassshelf({ X, Z, Wd, Dd, Y0 }) {   // 유리 선반 + 크롬 받침
+    addBox(house, Wd, .008, Dd, X, Y0, Z, 0, MAT.glass, { cast: false });
+    addBox(house, Wd, .012, .012, X, Y0 + .008, Z + (Dd > Wd ? 0 : Dd / 2 - .006), 0, MAT.chrome, { cast: false });
+  },
+  shower({ X, Z, Y0, Hh, f }) {   // 욕조 벽 수전 + 샤워 호스 + 위쪽 걸이에 걸린 샤워기
+    const fz = Z + .02;
+    addBox(house, .16, .05, .05, X, Y0, fz, 0, MAT.chrome);
+    addMesh(new THREE.CylinderGeometry(.012, .012, .12, 12), MAT.chrome, X, Y0 - .05, fz + .03, { cast: false });   // 토수구
+    addMesh(new THREE.CylinderGeometry(.008, .008, Hh, 8), MAT.chrome, X + .07, Y0 + Hh / 2, fz + .015, { cast: false });   // 호스
+    const head = addMesh(new THREE.CylinderGeometry(.045, .03, .05, 20), MAT.chrome, X + .07, Y0 + Hh, fz + .05, { cast: false });
+    head.rotation.x = Math.PI / 2.6;
   },
   sink({ X, Z, Wd, Dd, Y0, Hh, f }) {
     addMesh(new THREE.CylinderGeometry(Wd / 2, Wd / 2 * .8, Hh, 32), MAT.porcelain, X, Y0 + Hh / 2, Z, { sz: Dd / Wd });
