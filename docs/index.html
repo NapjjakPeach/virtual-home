@@ -2312,7 +2312,14 @@ let saveTimer = 0;
 const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveBoard, 400); };
 function applyRemote(it) {
   const cur = board.items.get(it.id);
-  if (cur && cur.t >= it.t) return;
+  if (cur && cur.t > it.t) return;
+  if (cur && cur.t === it.t) {   // 같은 시각인데 내용이 다르면: 예전 페이지가 모르는 칸(m 등)을 빼고 저장한 사본일 수 있다
+    const a = JSON.stringify(cur), b = JSON.stringify(it);
+    if (a === b) return;
+    const richer = Object.keys(it).some(k => !(k in cur)), poorer = Object.keys(cur).some(k => !(k in it));
+    if (poorer && !richer) return;                     // 내 쪽이 더 많이 알고 있으면 그대로
+    if (!richer && b < a) return;                      // 둘 다 같으면 글자 순서로 정해 모두 같은 쪽으로 모이게
+  }
   board.items.set(it.id, it); saveSoon(); boardChanged(it);
 }
 let sendTimer = 0, lastSendAt = 0;
