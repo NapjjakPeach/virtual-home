@@ -469,7 +469,10 @@ const DEFAULT_PLAN = {
     { name: '세면대', ref: [3,3], x: 35, y: -530, w: 1540, d: 450, h: 90, z: 750, color: '#f0e7d6', kind: 'vanity', basin: 1265 },
     { name: '세면대 수전', ref: [3,3], x: 1275, y: -170, w: 50, d: 50, h: 180, z: 840, color: '#dddddd', kind: 'faucet' },
     { name: '오픈 선반', ref: [3,3], x: 40, y: -230, w: 420, d: 150, h: 700, z: 1250, color: '#b98a5a', kind: 'openshelf' },
-    { name: '변기',       ref: [3,3], x: 610, y: -760, w: 380, d: 680, h: 420, color: '#fbfbf9', kind: 'toilet' },
+    { name: '변기',       ref: [3,3], x: 610, y: -930, w: 380, d: 930, h: 420, color: '#fbfbf9', kind: 'toilet', under: 750, enc: 430 },
+    { name: '바닥 배수구', ref: [3,3], x: 1158, y: -990, w: 150, d: 150, h: 5, color: '#3b3d3f', kind: 'drain' },
+    { name: '컵걸이',     ref: [3,3], x: 1028, y: -150, w: 60, d: 70, h: 80, z: 1000, color: '#ecebe8' },
+    { name: '비누 받침',  ref: [3,3], x: 1408, y: -170, w: 80, d: 90, h: 20, z: 1000, color: '#ecebe8' },
     { name: '거울장',     ref: [3,3], x: 500, y: -230, w: 1050, d: 150, h: 700, z: 1250, color: '#dde4e8', kind: 'mirror' },
     { name: '실외기실 바닥판', ref: [2,5], x: -125, y: 125, w: 1759, d: 715, h: 250, z: -260, color: '#8f8a83' },
     { name: '난간',       ref: [2,5], x: 125, y: 795, w: 1259, d: 40, h: 1100, color: '#f4f4f2', kind: 'railing', solid: true },
@@ -1198,14 +1201,25 @@ function addMesh(geo, mat, x, y, z, opts = {}) {
   m.castShadow = opts.cast !== false; m.receiveShadow = true; house.add(m); return m;
 }
 const FIX = {
-  toilet({ X, Z, Wd, Dd, zBack }) {
-    const tz = zBack + .1;
-    addBox(house, Wd * .95, .36, .17, X, .58, tz, 0, MAT.porcelain);              // 물탱크
-    addBox(house, Wd, .03, .19, X, .775, tz, 0, MAT.porcelain);                     // 탱크 뚜껑
-    const bz = zBack + .2 + (Dd - .2) / 2;
-    addMesh(new THREE.CylinderGeometry(.13, .1, .22, 24), MAT.porcelain, X, .11, bz, { sz: 1.35 });   // 받침
-    addMesh(new THREE.CylinderGeometry(.19, .15, .2, 28), MAT.porcelain, X, .3, bz, { sz: 1.3 });    // 변기
-    addMesh(new THREE.CylinderGeometry(.195, .195, .025, 28), MAT.porcelain, X, .415, bz, { sz: 1.3 }); // 시트
+  toilet({ X, Z, Wd, Dd, zBack, f }) {   // 영상처럼: 탱크는 세면대 카운터 아래 상자 안에 숨어 있고, 둥근 몸통 + 시트 + 세워 둔 두꺼운 뚜껑
+    const encD = (f.enc || 180) / 1000, top = (f.under || 750) / 1000;   // 탱크 상자 깊이 (영상: 세면대 카운터 앞면까지)
+    addBox(house, Wd + .06, top, encD, X, top / 2, zBack + encD / 2, 0, MAT.acryl);   // 탱크를 감싼 상자 (카운터 밑까지)
+    const L = Math.min(.52, Dd - encD), bz = zBack + encD + L / 2 - .02, sz = L / .39;   // 몸통 앞뒤 길이 L (지름 .39 둥근 꼴을 앞뒤로 늘림)
+    const body = new THREE.LatheGeometry([[0, 0], [.105, 0], [.11, .05], [.125, .16], [.15, .26], [.18, .33], [.195, .375], [.19, .39], [.165, .392], [.15, .36], [.11, .28], [0, .27]].map(([r, y]) => new THREE.Vector2(r, y)), 40);
+    addMesh(body, MAT.porcelain, X, 0, bz, { sz });
+    const water = addMesh(new THREE.CircleGeometry(.1, 32), std({ color: '#cfd8da', roughness: .05 }), X, .3, bz + .02, { cast: false });
+    water.scale.y = sz;   // 눕힌 원: 모양의 y가 앞뒤
+    water.rotation.x = -Math.PI / 2;
+    const seat = addMesh(new THREE.TorusGeometry(.155, .026, 10, 40), MAT.porcelain, X, .405, bz, { cast: false });
+    seat.rotation.x = Math.PI / 2; seat.scale.set(1, sz, .45);
+    // 뚜껑: 경첩(뒤쪽)에서 세워 카운터 앞에 기댐
+    const lid = addMesh(new THREE.CylinderGeometry(.19, .19, .028, 40), MAT.porcelain, X, .405 + .19 * sz, bz - L / 2 + .035, {});
+    lid.scale.set(1, 1, sz); lid.rotation.x = Math.PI / 2 - .1;   // 세워서 카운터 쪽으로 살짝 기울임
+    for (const sx of [-1, 1]) addBox(house, .03, .025, .03, X + sx * .09, .41, bz - L / 2 + .04, 0, MAT.chrome, { cast: false });   // 경첩
+  },
+  drain({ X, Z, Wd, Dd }) {   // 바닥 사각 배수구 (스테인리스 격자)
+    addBox(house, Wd, .004, Dd, X, .002, Z, 0, MAT.steel, { cast: false });
+    for (let k = -2; k <= 2; k++) addBox(house, Wd * .8, .005, .006, X, .003, Z + k * Dd * .16, 0, MAT.black, { cast: false });
   },
   tub({ X, Z, Wd, Dd, Hh }) {   // 붙박이 욕조: 평평한 앞판 + 둥근 모서리 테두리 + 아래로 좁아지는 안쪽 (영상처럼 아이보리)
     const rim = .075, wall = new THREE.Shape();
