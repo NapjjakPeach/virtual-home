@@ -3040,7 +3040,7 @@ function renderPinList() {
 
 room = createRoom();
 if (room) attachBoard(room);
-if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, get model() { return model; } };   // 테스트용 (?debug일 때만)
+if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, putItem, get model() { return model; } };   // 테스트용 (?debug일 때만)
 if (!room) { connState = 'solo'; setConn('solo'); renderPeople(); }
 else {
   connState = 'wait'; setConn('wait');
