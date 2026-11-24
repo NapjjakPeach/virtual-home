@@ -483,7 +483,7 @@ const DEFAULT_PLAN = {
   furniture: [
     { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 460, s: 'platbed', m: 'lowb-velluce-k', c: '#e9e3d9', px: 8617, py: 8590, rot: -90, t: 4 },   // 삼익 로우브 평상형 LK(1800×2100×100) + ACE 벨루체 K 매트리스(1670×2075×360)
     { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
-    { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 630, h: 1800, s: 'fridge', c: '#cfd3d6', px: 2117, py: 4530, rot: 180 }
+    { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 630, h: 1880, s: 'fridge', m: 'clawind-302', c: '#c9ccce', px: 2117, py: 4530, rot: 180, t: 2 }
   ]
 };
 
@@ -2210,7 +2210,8 @@ const NOBLOCK = { rug: 1, pendant: 1 };
    가구에 m(모델 이름)이 있으면 모양(s)으로 먼저 그려 두고, 모델을 받는 대로 바꿔 끼운다 */
 const MODELS = {
   'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 },   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
-  'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480 }      // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
+  'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480 },     // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
+  'clawind-302': { url: 'models/fridge_clawind_302.glb', v: 1, w: 595, d: 630, h: 1880 }            // 캐리어 클라윈드 피트인 302L KRNC302SEI1 (실버)
 };
 const modelCache = new Map();
 function loadModel(key) {

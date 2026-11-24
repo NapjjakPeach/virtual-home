@@ -89,6 +89,19 @@ def maple(W=1024, H=1024):
     save_rgb(normal_from_height(.00003 * fine, 1, .5 / W), 'maple_nor.png')
 
 
+# ---------------- 헤어라인 메탈 (냉장고 문) ----------------
+def steel(W=1024, H=1024):
+    """가로 헤어라인(브러시드) 은색 메탈. 0.3 m × 0.3 m 반복"""
+    print('steel')
+    streak = noise((H, W), (.6, 60))                                       # 가로로 아주 긴 잔줄
+    blot = noise((H, W), 60) * .25                                         # 넓은 얼룩 (빛 받을 때 살짝)
+    t = .75 * streak + blot
+    t = (t - t.min()) / (t.max() - t.min())
+    col = hexlin('#c9ccce') * (.9 + .16 * t[..., None])
+    save_rgb(to_srgb(col), 'steel_diff.png')
+    save_rgb(normal_from_height(.000012 * streak, 1, .3 / W), 'steel_nor.png')
+
+
 # ---------------- 필로우탑 윗면 ----------------
 def quilt(N=1024, size=.28):
     print('quilt')
@@ -168,6 +181,6 @@ def band(W=1024, H=768, width=.12, height=.09):
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple):
+    for f in (oak, quilt, wave, band, maple, steel):
         if not only or f.__name__ in only: f()
     print('->', OUT)
