@@ -386,6 +386,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 (() => {
 'use strict';
@@ -1144,6 +1145,8 @@ function buildHouse(m) {
   }
   scene.add(house);
   applyLook();
+  if (typeof syncFloorReflect === 'function') syncFloorReflect();
+  if (typeof resetProbes === 'function') resetProbes();
 }
 
 /* 콘센트: 마루 방마다 벽 두 곳(문·창에서 떨어진 긴 벽면의 1/3 지점), 바닥에서 300mm */
@@ -1469,6 +1472,18 @@ const orbit = { tx: 0, tz: 0, r: 13, az: -0.5, pol: 0.62 };
 const keys = {};
 const joy = { x: 0, y: 0 };
 const EYE = 1.58;
+/* 세로선 보정 (건축 사진의 시프트 렌즈): 카메라는 수평을 유지하고 화면만 위아래로 민다 */
+const SHIFT_MAX = .42;
+let lensNow = null;
+function lensShift(a) {
+  if (lensNow === a && !camera.userData.projDirty) return;
+  lensNow = a; camera.userData.projDirty = false;
+  camera.updateProjectionMatrix();
+  if (a) {
+    camera.projectionMatrix.elements[9] += Math.tan(a) / Math.tan(camera.fov * Math.PI / 360);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  }
+}
 const raycaster = new THREE.Raycaster();
 
 function setMode(mode) {
@@ -1624,10 +1639,11 @@ function update(dt) {
   if (state.auto && state.auto.stuck > .4) state.auto = null;
 
   if (state.mode === 'walk') {
-    camera.position.set(me.x, EYE, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
+    const sh = clamp(me.pitch, -SHIFT_MAX, SHIFT_MAX);   // 조금 들고 숙이는 건 렌즈를 밀어서 (벽 세로선이 기울지 않게), 그 이상만 고개를 꺾는다
+    camera.position.set(me.x, EYE, me.z); camera.rotation.set(me.pitch - sh, me.yaw, 0); lensShift(sh);
   } else {
     const t = orbit, cx = t.tx + Math.sin(t.az) * Math.sin(t.pol) * t.r, cz = t.tz + Math.cos(t.az) * Math.sin(t.pol) * t.r, cy = Math.cos(t.pol) * t.r;
-    camera.position.set(cx, cy, cz); camera.lookAt(t.tx, 0, t.tz);
+    camera.position.set(cx, cy, cz); camera.lookAt(t.tx, 0, t.tz); lensShift(0);
   }
   if (!selfAvatar) selfAvatar = makeAvatar(me.color, me.nick || '나');
   setAvatarLook(selfAvatar, me.color, (me.nick || '나'));
@@ -1923,6 +1939,7 @@ function syncBaked() {
   if (ok && BAKED.attachedTo !== house) { attachBaked(); BAKED.attachedTo = house; }
   if (ok && BAKED.group.parent !== scene) scene.add(BAKED.group);
   if (!ok && BAKED.group && BAKED.group.parent) scene.remove(BAKED.group);
+  if (BAKED.active !== !!ok && typeof resetProbes === 'function') setTimeout(resetProbes, 0);
   BAKED.active = !!ok;
   if (aoPass) aoPass.enabled = !ok;   // 구운 빛에 구석 그늘이 이미 들어 있다
   hemi.intensity = ok ? BAKED.meta.hemi : (night ? LOOK.night : LOOK.day).hemi;
@@ -2087,7 +2104,7 @@ function applyLook() {
   scene.traverse(o => {
     if (o.isPointLight && o.userData.roomLight) o.visible = night && ceilOn;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
-    for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap) mt.envMapIntensity = L.env;
+    for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap && !mt.userData.probe) mt.envMapIntensity = L.env;
   });
   syncBaked();
   $('#btnNight').setAttribute('aria-pressed', night);
@@ -2096,7 +2113,7 @@ function applyLook() {
   const nb = $('#nightBtn2'); if (nb) nb.textContent = night ? '낮으로 보기' : '밤으로 보기';
   const cb = $('#ceilBtn'); if (cb) { cb.textContent = ceilOn ? '천장등 켜짐' : '천장등 꺼짐'; cb.setAttribute('aria-pressed', ceilOn); }
 }
-$('#btnNight').onclick = () => { night = !night; applyLook(); };
+$('#btnNight').onclick = () => { night = !night; applyLook(); syncFloorReflect(); };
 $('#btnBaked').onclick = () => { BAKED.want = !BAKED.want; store.set('vh.baked', BAKED.want); syncBaked(); };
 
 let hq = !isCoarse && store.get('vh.hq', true), composer = null, aoPass = null;
@@ -2123,9 +2140,59 @@ function setupComposer() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(canvas.clientWidth, canvas.clientHeight);
 }
+/* 바닥 반사: 마루·타일에 창빛과 가구가 은은하게 비친다 (고화질에서만, 비스듬히 볼수록 강하게, 살짝 흐리게) */
+var floorRef = null;
+const FLOOR_REFLECT_SHADER = {
+  name: 'FloorReflect',
+  uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, tMask: { value: null }, maskB: { value: new THREE.Vector4() }, texel: { value: new THREE.Vector2() } },
+  vertexShader: `uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() { vUv = textureMatrix * vec4(position, 1.0); vW = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tMask; uniform vec4 maskB; uniform vec2 texel; varying vec4 vUv; varying vec3 vW;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      vec2 uv = vUv.xy / vUv.w; vec3 c = vec3(0.0);
+      for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) c += texture2D(tDiffuse, uv + vec2(float(i), float(j)) * texel * 2.2).rgb;
+      c /= 25.0;
+      float m = texture2D(tMask, (vW.xz - maskB.xy) / (maskB.zw - maskB.xy)).r;
+      vec3 V = normalize(cameraPosition - vW);
+      float fr = .1 + .55 * pow(1.0 - clamp(V.y, 0.0, 1.0), 2.5);   // 비스듬히 볼수록 강하게 (프레넬)
+      gl_FragColor = vec4(c, fr * m);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+};
+function syncFloorReflect() {
+  if (floorRef) { scene.remove(floorRef); floorRef.dispose(); floorRef.material.uniforms.tMask.value?.dispose(); floorRef = null; }
+  if (!hq || !house || !bounds || night) return;
+  const w = bounds.x1 - bounds.x0, d = bounds.z1 - bounds.z0, size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const tw = Math.round(size.x / 2), th = Math.round(size.y / 2);
+  const mask = canvasTex(512, 512, (g, W0, H0) => {   // 반사할 바닥: 집 안 방만 (마루 진하게, 타일 조금 약하게)
+    g.fillStyle = '#000'; g.fillRect(0, 0, W0, H0);
+    for (const r of model.rooms) {
+      if (r.outside) continue;
+      const [ax, az] = W(r.x0, r.y0), [cx, cz] = W(r.x1, r.y1);
+      const u0 = (Math.min(ax, cx) - bounds.x0) / w, u1 = (Math.max(ax, cx) - bounds.x0) / w, v0 = (Math.min(az, cz) - bounds.z0) / d, v1 = (Math.max(az, cz) - bounds.z0) / d;
+      g.fillStyle = r.floor === 'wood' ? '#ffffff' : '#a0a0a0';
+      g.fillRect(u0 * W0, (1 - v1) * H0, (u1 - u0) * W0, (v1 - v0) * H0);
+    }
+  }, false);
+  floorRef = new Reflector(new THREE.PlaneGeometry(w, d), { textureWidth: tw, textureHeight: th, clipBias: .003, shader: FLOOR_REFLECT_SHADER });
+  const u = floorRef.material.uniforms;
+  u.tMask.value = mask; u.maskB.value.set(bounds.x0, bounds.z0, bounds.x1, bounds.z1); u.texel.value.set(1 / tw, 1 / th);
+  Object.assign(floorRef.material, { transparent: true, depthWrite: false });
+  floorRef.rotation.x = -Math.PI / 2; floorRef.position.set((bounds.x0 + bounds.x1) / 2, .0025, (bounds.z0 + bounds.z1) / 2);
+  floorRef.userData.noAO = true; floorRef.raycast = () => {}; floorRef.renderOrder = 2;
+  scene.add(floorRef);
+}
 function setHQ(on) {
   hq = on; store.set('vh.hq', on);
   if (on) setupComposer();
+  if (typeof syncFloorReflect === 'function') syncFloorReflect();
   $('#btnHQ').setAttribute('aria-pressed', on);
 }
 $('#btnHQ').onclick = () => setHQ(!hq);
@@ -2136,7 +2203,7 @@ function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h);
   if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
-  camera.fov = w < h ? 80 : 70; camera.updateProjectionMatrix();
+  camera.fov = w < h ? 80 : 70; camera.updateProjectionMatrix(); camera.userData.projDirty = true;
 }
 addEventListener('resize', resize);
 let prev = performance.now(), miniT = 0;
@@ -2295,19 +2362,68 @@ function loadModel(key) {
     .catch(e => { console.warn('모델을 못 불러옴', key, e); toast(`3D 모델을 불러오지 못해 단순한 모양으로 보여요 (${String(e && e.message || e).slice(0, 60)})`); modelCache.delete(key); return null; }));
   return modelCache.get(key);
 }
+/* 바닥 그림자: 가구 밑에 깔리는 부드러운 그늘 (가구와 같이 움직이므로 옮겨도 바로 맞는다) */
+function contactShadow(it) {
+  const W2 = it.w / 1000, D2 = it.d / 1000, m = .13, pw = W2 + 2 * m, pd = D2 + 2 * m, N = 128;
+  const tex = canvasTex(N, N, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const mx = w * m / pw, my = h * m / pd;
+    g.filter = `blur(${Math.max(3, Math.min(mx, my) * .55)}px)`;
+    g.fillStyle = '#000'; g.fillRect(mx * .8, my * .8, w - mx * 1.6, h - my * 1.6);
+  }, false);
+  const op = .42 + .3 * Math.min(1, it.h / 900);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(pw, pd), new THREE.MeshBasicMaterial({ map: tex, color: '#000000', transparent: true, opacity: op, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
+  mesh.rotation.x = -Math.PI / 2; mesh.position.y = .004; mesh.renderOrder = 1;
+  mesh.userData = { keep: true, noAO: true, shadow: true }; mesh.raycast = () => {};
+  mesh.material.userData.own = true;
+  return mesh;
+}
+/* 방의 구운 빛을 가구에 입힌다: 가구 자리에서 사방을 한 번 찍은 빛 지도(빛 탐침)를 가구 재질의 반사·채움빛으로 */
+var probeCache = new Map(), probeWait = new Set(), probeTimer = 0;   // var: 집을 처음 지을 때(이 줄보다 먼저) 불려도 오류 없이 넘어가게
+const PROBE_GAIN = 1.0;
+function queueProbe(id) { if (!probeWait) return; probeWait.add(id); clearTimeout(probeTimer); probeTimer = setTimeout(runProbes, 160); }
+function furnProbe(x, z) {
+  const key = Math.round(x * 2) + ',' + Math.round(z * 2);   // 50cm 칸마다 한 번
+  if (probeCache.has(key)) return probeCache.get(key);
+  const rt = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType });
+  const cc = new THREE.CubeCamera(.05, 120, rt); cc.position.set(x, .9, z);
+  const fv = furnGroup.visible; furnGroup.visible = false;
+  cc.update(renderer, scene); furnGroup.visible = fv;
+  const tex = pmrem.fromCubemap(rt.texture).texture; rt.dispose();
+  probeCache.set(key, tex); return tex;
+}
+function applyProbe(g, it) {
+  const on = !!BAKED.active, env = on ? furnProbe(it.x, it.z) : null;
+  for (const m of g.userData.mats || []) {
+    if (!m || !m.isMeshStandardMaterial) continue;
+    if (m.envMap !== env) { m.envMap = env; m.needsUpdate = true; }
+    m.envMapIntensity = on ? PROBE_GAIN : curEnv(); m.userData.probe = on;
+  }
+}
+function runProbes() {
+  for (const id of probeWait) { const g = furnMeshes.get(id), it = board.items.get(id); if (g && it && !it.del) applyProbe(g, it); }
+  probeWait.clear();
+}
+function resetProbes() {   // 실사 조명을 켜고 끄거나 집이 바뀌면 다시 찍는다
+  if (!probeCache) return;
+  for (const tx of probeCache.values()) tx.dispose();
+  probeCache.clear();
+  for (const id of furnMeshes.keys()) probeWait.add(id);
+  clearTimeout(probeTimer); probeTimer = setTimeout(runProbes, 200);
+}
 function attachModel(g, it, mats) {
   loadModel(it.m).then(src => {
     if (!src || furnMeshes.get(it.id) !== g) return;   // 그사이 다시 그려졌거나 지워짐
     const M = MODELS[it.m], o = src.clone(true);
     o.scale.set(it.w / M.w, it.h / M.h, it.d / M.d);
-    for (const c of [...g.children]) if (!c.userData.furnLabel) { g.remove(c); disposeObj(c); }
+    for (const c of [...g.children]) if (!c.userData.furnLabel && !c.userData.keep) { g.remove(c); disposeObj(c); }
     mats.length = 0;
     o.traverse(c => {
       if (!c.isMesh) return;
       c.castShadow = c.receiveShadow = true; c.userData.sharedGeo = true; c.userData.furnId = it.id;
       c.material = c.material.clone(); c.material.envMapIntensity = curEnv(); mats.push(c.material);   // 재질만 가구마다 따로 (겹침 경고 색)
     });
-    g.add(o); scheduleFurnRefresh();
+    g.add(o); scheduleFurnRefresh(); queueProbe(it.id);
   });
 }   // 바닥 자리를 차지하지 않는 것 (겹침·부딪힘 판정에서 뺀다)
 const FURN_COLORS = ['#d9cbb5', '#8a9aa6', '#b68a5d', '#4f4a45', '#e8e2d6', '#cfd3d6', '#7d9a7e', '#c4867a'];
@@ -2569,7 +2685,9 @@ function buildFurnObject(it) {
   g.add(label);
   g.userData = { id: it.id, mats, sig: furnSig(it) };
   g.traverse(o => { if (o.isMesh && !o.userData.furnLabel) o.userData.furnId = it.id; });
+  if (!NOBLOCK[it.s]) g.add(contactShadow(it));
   if (MODELS[it.m]) attachModel(g, it, mats);
+  else queueProbe(it.id);
   return g;
 }
 function lampBulb(g, it, y) {   // 전구: 켜면 빛 색으로 밝게
@@ -2616,7 +2734,9 @@ function renderFurn(it) {
     if (g) { furnGroup.remove(g); disposeObj(g); }
     g = buildFurnObject(it); furnGroup.add(g); furnMeshes.set(it.id, g);
   }
+  const moved = g.position.x !== it.x || g.position.z !== it.z;
   g.position.set(it.x, 0, it.z); g.rotation.y = it.r;
+  if (moved) queueProbe(it.id);
   if (it.id === furnSel) syncSelOutline();
   if (LAMPS[it.s] || lampPool.length) syncLamps();
 }
