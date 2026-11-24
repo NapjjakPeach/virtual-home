@@ -385,6 +385,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 (() => {
 'use strict';
@@ -453,14 +454,14 @@ const DEFAULT_PLAN = {
     { wall: 'dNorthB', type: 'door',  at: 125,  w: 835, hinge: 'start', swing: -1 }
   ],
   fixtures: [
-    { name: '주방 하부장', ref: [0,4], x: 125, y: -725, w: 2950, d: 600, h: 850, color: '#f1efea' },
+    { name: '주방 하부장', ref: [0,4], x: 125, y: -725, w: 2950, d: 600, h: 850, color: '#f1efea', kind: 'cabinet', kick: 100, handle: 'top' },
     { name: '상판',       ref: [0,4], x: 125, y: -735, w: 2950, d: 610, h: 30, z: 850, color: '#e2ded6' },
     { name: '개수대',     ref: [0,4], x: 450, y: -660, w: 800, d: 460, h: 8, z: 878, color: '#aab0b6' },
     { name: '주방 벽 타일', ref: [0,4], x: 125, y: -145, w: 2950, d: 20, h: 670, z: 880, color: '#ffffff', tex: 'tile' },
     { name: '주방 수전',  ref: [0,4], x: 825, y: -235, w: 50, d: 50, h: 300, z: 880, color: '#dddddd', kind: 'faucet' },
     { name: '쿡탑',       ref: [0,4], x: 2175, y: -660, w: 580, d: 500, h: 8, z: 880, color: '#111111', kind: 'cooktop' },
     { name: '레인지후드', ref: [0,4], x: 2115, y: -475, w: 700, d: 350, h: 120, z: 1430, color: '#b9bdc1', kind: 'hood' },
-    { name: '상부장',     ref: [0,4], x: 125, y: -475, w: 2950, d: 350, h: 700, z: 1550, color: '#f6f4ef' },
+    { name: '상부장',     ref: [0,4], x: 125, y: -475, w: 2950, d: 350, h: 700, z: 1550, color: '#f6f4ef', kind: 'cabinet', handle: 'bottom' },
     { name: '욕조',       ref: [4,2], x: -825, y: 175, w: 700, d: 1500, h: 550, color: '#f7f6f2', kind: 'tub' },
     { name: '욕조 수전',  ref: [4,2], x: -185, y: 1450, w: 50, d: 50, h: 160, z: 700, color: '#dddddd', kind: 'faucet', front: '-x' },
     { name: '변기',       ref: [3,3], x: 610, y: -760, w: 380, d: 680, h: 420, color: '#fbfbf9', kind: 'toilet' },
@@ -557,8 +558,9 @@ const canvas = $('#scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMapping = THREE.AgXToneMapping;   // 사진처럼 밝은 곳을 부드럽게 눌러 주는 색감 처리 (ACES보다 색이 덜 뜬다)
+const TONE_GAIN = { baked: 1.0, live: 1.45 };  // 노출 배율: 구운 빛은 그대로, 실시간 빛은 AgX가 ACES(노출/0.6)보다 어두워서 올린다
+renderer.toneMappingExposure = TONE_GAIN.live;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
@@ -872,7 +874,7 @@ const MAT = {
   door: std({ color: '#b07a49', roughness: .5 }),
   front: std({ color: '#5c6166', roughness: .45, metalness: .4 }),
   frame: std({ color: '#ecebe7', roughness: .4 }),
-  glass: std({ color: '#cfe2ec', roughness: .02, metalness: 0, transparent: true, opacity: .16, depthWrite: false }),
+  glass: std({ color: '#d8e6ec', roughness: .02, metalness: 0, transparent: true, opacity: .1, depthWrite: false }),
   slab: std({ color: '#a7a39c', roughness: 1 }),
   base: std({ color: '#7d5233', roughness: .5 }),
   chrome: std({ color: '#e2e4e6', roughness: .18, metalness: 1 }),
@@ -1001,6 +1003,7 @@ function buildHouse(m) {
     }
     for (const o of w.ops) buildOpening(w, o, m, rotY, roomAt);
   }
+  addOutlets(m, roomAt);
 
   for (const f of m.fixtures) {
     if (f.name.endsWith('(도면)') && !showFurniture) continue;
@@ -1015,6 +1018,37 @@ function buildHouse(m) {
   }
   scene.add(house);
   applyLook();
+}
+
+/* 콘센트: 마루 방마다 벽 두 곳(문·창에서 떨어진 긴 벽면의 1/3 지점), 바닥에서 300mm */
+function addOutlets(m, roomAt) {
+  for (const r of m.rooms) {
+    if (r.outside || r.floor !== 'wood' || r.id === 'hall') continue;
+    const cand = [];
+    for (const w of m.walls) for (const sg of [1, -1]) {
+      const off = w.t / 2 + 60, ok = [];
+      for (let s = 0; s <= w.len; s += 50) {
+        const q = [w.A[0] + w.u[0] * s + w.n[0] * off * sg, w.A[1] + w.u[1] * s + w.n[1] * off * sg];
+        if (roomAt(q[0], q[1]) !== r) continue;
+        const dc = Math.min(Math.abs(q[0] - r.x0), Math.abs(q[0] - r.x1), Math.abs(q[1] - r.y0), Math.abs(q[1] - r.y1));
+        const along = Math.abs(w.u[0]) > .5 ? Math.min(q[0] - r.x0, r.x1 - q[0]) : Math.min(q[1] - r.y0, r.y1 - q[1]);
+        if (along < 450 || w.ops.some(o => s > o.s - 350 && s < o.e + 350)) continue;
+        ok.push(s);
+      }
+      if (ok.length > 6) cand.push({ w, sg, ok, len: ok.length });
+    }
+    cand.sort((a, b) => b.len - a.len);
+    for (const c of cand.slice(0, 2)) {
+      const s = c.ok[Math.floor(c.ok.length / 3)], w = c.w, dd = (w.t / 2 + 5) * c.sg;
+      const [x, z] = W(w.A[0] + w.u[0] * s + w.n[0] * dd, w.A[1] + w.u[1] * s + w.n[1] * dd), rotY = Math.atan2(w.u[1], w.u[0]);
+      addBox(house, .12, .075, .01, x, .3, z, rotY, MAT.switchp, { cast: false });
+      for (const k of [-1, 1]) {   // 꽂는 구멍 (둥근 홈 두 개)
+        const [hx, hz] = W(w.A[0] + w.u[0] * (s + k * 30) + w.n[0] * (dd + 6 * c.sg), w.A[1] + w.u[1] * (s + k * 30) + w.n[1] * (dd + 6 * c.sg));
+        const hole = addMesh(new THREE.CylinderGeometry(.017, .017, .004, 20), fixMat('#d9d5cc'), hx, .3, hz, { cast: false });
+        hole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(w.n[0] * c.sg, 0, -w.n[1] * c.sg));   // 벽에서 방 쪽을 보게
+      }
+    }
+  }
 }
 
 /* 설비 모양 (도면 데이터의 kind 값) */
@@ -1076,6 +1110,17 @@ const FIX = {
     for (const [ox, oz] of [[-.13, -.1], [.13, -.1], [0, .12]]) addMesh(new THREE.TorusGeometry(.08, .004, 6, 32), std({ color: '#5a5c5e', roughness: .4 }), X + ox, Y0 + .01, Z + oz, { cast: false }).rotation.x = Math.PI / 2;
   },
   hood({ X, Z, Wd, Dd, Y0, Hh }) { addBox(house, Wd, Hh, Dd, X, Y0 + Hh / 2, Z, 0, MAT.steel); },
+  cabinet({ X, Z, Wd, Dd, Y0, Hh, f }) {   // 주방 장: 문짝(약 600 폭) 사이 3mm 틈 + 손잡이 + 아래 걸레받이 들어간 자리. 앞 = 도면 -y(기본) / +y
+    const fz = f.front === '+y' ? -1 : 1, zf = Z + fz * Dd / 2, kick = (f.kick || 0) / 1000;
+    const n = Math.max(1, Math.round(Wd / ((f.door || 600) / 1000))), dw = Wd / n, bh = Hh - kick;
+    addBox(house, Wd, bh, Dd - .02, X, Y0 + kick + bh / 2, Z - fz * .01, 0, fixMat('#cdc7bc'));   // 몸통 (문 틈이 어둡게 보이도록)
+    if (kick) addBox(house, Wd, kick, Dd - .08, X, Y0 + kick / 2, Z - fz * .04, 0, fixMat('#4a4540'), { cast: false });
+    for (let i = 0; i < n; i++) {
+      const cx = X - Wd / 2 + dw * (i + .5);
+      addBox(house, dw - .003, bh - .004, .018, cx, Y0 + kick + bh / 2, zf - fz * .009, 0, fixMat(f.color));
+      if (f.handle) addBox(house, Math.min(.16, dw * .45), .012, .016, cx, f.handle === 'bottom' ? Y0 + kick + .045 : Y0 + Hh - .045, zf + fz * .008, 0, MAT.steel, { cast: false });
+    }
+  },
   pendant({ X, Z, Wd, Y0, H }) {
     const top = H, r = Wd / 2;
     addMesh(new THREE.CylinderGeometry(.003, .003, top - Y0 - r * .6, 6), MAT.black, X, (top + Y0 + r * .6) / 2, Z, { cast: false });
@@ -1132,6 +1177,11 @@ function buildOpening(w, o, m, rotY, roomAt) {
     const mid = (o.s + o.e) / 2, [fx, fz] = W(...along(mid));
     addBox(house, (o.e - o.s) / 1000, .05, T + .02, fx, m.DH / 1000 - .025, fz, rotY, MAT.frame, { cast: false });
     for (const s of [o.s, o.e]) { const [jx, jz] = W(...along(s)); addBox(house, .04, m.DH / 1000, T + .02, jx, m.DH / 2000, jz, rotY, MAT.frame, { cast: false }); }
+    for (const sg of [1, -1]) {   // 문선: 문 둘레 벽면에 두른 60mm 몰딩 (양쪽 면)
+      const off = (w.t / 2 + 6) * sg, at = s => { const q = along(s); return W(q[0] + w.n[0] * off, q[1] + w.n[1] * off); };
+      const [hx, hz] = at(mid); addBox(house, (o.e - o.s + 120) / 1000, .06, .012, hx, m.DH / 1000 + .03, hz, rotY, MAT.frame, { cast: false });
+      for (const s of [o.s - 30, o.e + 30]) { const [jx, jz] = at(s); addBox(house, .06, m.DH / 1000 + .06, .012, jx, (m.DH / 1000 + .06) / 2, jz, rotY, MAT.frame, { cast: false }); }
+    }
     return;
   }
   const top = Math.min(m.H, o.sill + o.h), y0 = o.sill / 1000, y1 = top / 1000, hh = y1 - y0;
@@ -1149,7 +1199,25 @@ function buildOpening(w, o, m, rotY, roomAt) {
     return;
   }
   const mid = (o.s + o.e) / 2, [x, z] = W(...along(mid)), L = (o.e - o.s) / 1000;
-  addBox(house, L, hh, .012, x, y0 + hh / 2, z, rotY, MAT.glass, { cast: false });
+  // 이중창: 안쪽·바깥쪽 창이 각각 두 짝씩 미닫이로 겹친다 (짝마다 창살 틀 + 유리)
+  const sw = L / 2 + .025;
+  for (const [layer, inner] of [[.058, true], [-.058, false]]) {
+    for (const k of [0, 1]) {
+      const sc = k ? o.e - sw * 500 : o.s + sw * 500, dep = layer + (k ? .017 : -.017);
+      const q = along(sc), [qx, qz] = W(q[0] + w.n[0] * dep * 1000, q[1] + w.n[1] * dep * 1000);
+      addBox(house, sw - .07, hh - .09, .006, qx, y0 + hh / 2, qz, rotY, MAT.glass, { cast: false });
+      addBox(house, sw, .045, .028, qx, y0 + .045 + .0225, qz, rotY, MAT.frame, { cast: false });
+      addBox(house, sw, .045, .028, qx, y1 - .045 - .0225, qz, rotY, MAT.frame, { cast: false });
+      for (const e of [sc - sw * 500 + 22, sc + sw * 500 - 22]) {
+        const p2 = along(e), [ex, ez] = W(p2[0] + w.n[0] * dep * 1000, p2[1] + w.n[1] * dep * 1000);
+        addBox(house, .044, hh - .09, .028, ex, y0 + hh / 2, ez, rotY, MAT.frame, { cast: false });
+      }
+    }
+    if (inner) for (const sg of [1, -1]) {   // 가운데 잠금쇠 (방 쪽에서 보이게 양쪽에)
+      const p3 = along(mid), d3 = (layer + .035) * 1000 * sg, [lx, lz] = W(p3[0] + w.n[0] * d3, p3[1] + w.n[1] * d3);
+      addBox(house, .05, .02, .012, lx, y0 + hh * .5, lz, rotY, MAT.chrome, { cast: false });
+    }
+  }
   addBox(house, L, .06, T * .5, x, y0 + .03, z, rotY, MAT.frame, { cast: false });
   if (o.sill > 0) for (const sg of [1, -1]) {   // 창대: 방 쪽으로 튀어나온 선반
     const r = roomAt(...along(mid).map((v, k) => v + w.n[k] * (w.t / 2 + 80) * sg));
@@ -1158,7 +1226,7 @@ function buildOpening(w, o, m, rotY, roomAt) {
     addBox(house, L + .08, .025, .07, sx3, y0 - .0125, sz3, rotY, MAT.frame);
   }
   addBox(house, L, .06, T * .5, x, y1 - .03, z, rotY, MAT.frame, { cast: false });
-  for (const s of [o.s + 30, mid, o.e - 30]) { const [qx, qz] = W(...along(s)); addBox(house, .06, hh, T * .5, qx, y0 + hh / 2, qz, rotY, MAT.frame, { cast: false }); }
+  for (const s of [o.s + 30, o.e - 30]) { const [qx, qz] = W(...along(s)); addBox(house, .06, hh, T * .5, qx, y0 + hh / 2, qz, rotY, MAT.frame, { cast: false }); }
   if (o.sill < 600) { /* 낮은 창: 난간 + 통과 막기 */
     addBox(house, L, .04, .04, x, 1.0, z, rotY, MAT.front, { cast: false });
     pushCollider(x, z, w.u, L, T);
@@ -1664,7 +1732,7 @@ function syncBaked() {
   if (aoPass) aoPass.enabled = !ok;   // 구운 빛에 구석 그늘이 이미 들어 있다
   hemi.intensity = ok ? BAKED.meta.hemi : (night ? LOOK.night : LOOK.day).hemi;
   sun.visible = !night && !ok;
-  renderer.toneMappingExposure = ok ? BAKED.meta.exposure : (night ? LOOK.night : LOOK.day).exposure;
+  renderer.toneMappingExposure = ok ? BAKED.meta.exposure * TONE_GAIN.baked : (night ? LOOK.night : LOOK.day).exposure * TONE_GAIN.live;
   const b = $('#btnBaked');
   if (b) { b.hidden = !BAKED.meta; b.setAttribute('aria-pressed', !!ok); b.disabled = !!(BAKED.meta && BAKED.meta.sig !== planSig(plan)); }
 }
@@ -1816,7 +1884,7 @@ $('#nick').addEventListener('keydown', e => { if (e.key === 'Enter') enter(); })
 function applyLook() {
   const L = night ? LOOK.night : LOOK.day;
   hemi.intensity = L.hemi; sun.intensity = L.sun; sun.visible = !night;
-  renderer.toneMappingExposure = L.exposure;
+  renderer.toneMappingExposure = L.exposure * TONE_GAIN.live;
   scene.background.set(L.bg); SKY_MAT.color.set(L.sky); GROUND_MAT.color.set(night ? '#2a3028' : '#8b917f');
   if (scene.fog) scene.fog.color.set(L.bg);
   CTX_MAT.wall.emissiveIntensity = night ? 1.1 : 0;
@@ -1854,6 +1922,8 @@ function setupComposer() {
     this.scene.traverse(o => { if (o.isSprite || o.userData.noAO || (o.material && !Array.isArray(o.material) && o.material.transparent)) o.visible = false; });
   };
   composer.addPass(gtao); aoPass = gtao; aoPass.enabled = !BAKED.active;
+  // 밝은 창·전등 둘레가 살짝 번지게 (사진기처럼). 아주 밝은 곳만
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), .22, .55, 1.05));
   composer.addPass(new OutputPass());
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(canvas.clientWidth, canvas.clientHeight);
@@ -3071,7 +3141,7 @@ function renderPinList() {
 
 room = createRoom();
 if (room) attachBoard(room);
-if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, putItem, scene, get model() { return model; } };   // 테스트용 (?debug일 때만)
+if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, putItem, scene, renderer, BAKED, get model() { return model; } };   // 테스트용 (?debug일 때만)
 if (!room) { connState = 'solo'; setConn('solo'); renderPeople(); }
 else {
   connState = 'wait'; setConn('wait');
