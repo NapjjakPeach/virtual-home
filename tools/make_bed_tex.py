@@ -109,6 +109,57 @@ def fore(W=1024, H=2048):
     save_rgb(normal_from_height(-.0001 * pores + .00003 * fine, 1, .5 / W), 'fore_nor.png')
 
 
+# ---------------- 고무나무 (룸앤홈 보메 식탁 다리·테두리) ----------------
+def rubber(W=1024, H=2048):
+    """고무나무 원목: 밝은 노란 베이지, 결이 곧고 잔잔하다. 0.5 m × 1.0 m, 결은 세로(v) 방향.
+    사이트 조명(노출 1.5)에서 상품 사진 색이 되도록 사진보다 한 단계 진하게"""
+    print('rubber')
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    warp = np.asarray(Image.fromarray(noise((H // 8, W // 8), 6, False)).resize((W, H), Image.BICUBIC))
+    u = x + warp * 20 + 6 * np.sin(y / H * 2 * np.pi * 1.1)
+    rings = np.sin(u / W * 2 * np.pi * 11)
+    fine = noise((H, W), (50, 1.0))
+    pores = (noise((H, W), (4, .5)) > 2.4).astype(np.float32)
+    t = .35 * rings + .45 * fine
+    t = (t - t.min()) / (t.max() - t.min())
+    light, dark = hexlin('#c99a5e'), hexlin('#a3743f')
+    col = light * (1 - t[..., None] * .5) + dark * (t[..., None] * .5)
+    col *= (1 - .1 * pores)[..., None]
+    save_rgb(to_srgb(col), 'rubber_diff.png')
+    save_rgb(normal_from_height(-.00008 * pores + .00003 * fine, 1, .5 / W), 'rubber_nor.png')
+
+
+# ---------------- 합판 옆면 (식탁 상판 모서리) ----------------
+def ply(W=512, H=512):
+    """합판 단면: 1.5 mm 안팎의 얇은 층이 밝고 어둡게 번갈아 쌓임. 0.1 m × 0.1 m, 층은 가로(u) 방향"""
+    print('ply')
+    y = np.arange(H, dtype=np.float32)[:, None]
+    jitter = noise((H, 1), 3)[:, :1] * 1.5
+    layer = (np.floor((y + jitter) / (H * .015)) % 2).astype(np.float32)   # 1.5 mm 층
+    layer = gaussian_filter(np.repeat(layer, W, 1), (.8, 0), mode='wrap')
+    fine = noise((H, W), (1.0, 40))
+    t = np.clip(.65 * layer + .2 * fine * .5 + .2, 0, 1)
+    light, dark = hexlin('#d2a86f'), hexlin('#a87b46')
+    col = light * (1 - t[..., None] * .6) + dark * (t[..., None] * .6)
+    save_rgb(to_srgb(col), 'ply_diff.png')
+
+
+# ---------------- 코듀로이 (더블린 체어 치즈 · 딥그린) ----------------
+def cord(N=1024):
+    """코듀로이: 4 mm 간격 골(이랑)이 세로(v)로 길게. 0.2 m × 0.2 m 한 장.
+    색은 상품 색상 칩(치즈 #f1ae47, 딥그린 #4f6338)을 사이트 조명에 맞춰 한 단계 진하게"""
+    print('cord')
+    x = np.arange(N, dtype=np.float32)[None, :]
+    pitch = N * .004 / .2                                                 # 4 mm
+    s = np.abs(np.sin(np.pi * x / pitch))
+    rib = np.repeat(s ** .6, N, 0)                                        # 이랑 높이 (0 = 골)
+    pile = noise((N, N), (6, .5)) * .5 + noise((N, N), 30) * .5           # 털 결 얼룩
+    for name, base in (('cheese', '#e3992f'), ('green', '#46592f')):
+        col = hexlin(base) * (.72 + .3 * rib[..., None] + .04 * pile[..., None])
+        save_rgb(to_srgb(col), f'cord_{name}_diff.png')
+    save_rgb(normal_from_height(.0012 * rib + .00004 * pile, 1, .2 / N), 'cord_nor.png')
+
+
 # ---------------- 헤어라인 메탈 (냉장고 문) ----------------
 def steel(W=1024, H=1024):
     """가로 헤어라인(브러시드) 은색 메탈. 0.3 m × 0.3 m 반복"""
@@ -201,6 +252,6 @@ def band(W=1024, H=768, width=.12, height=.09):
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple, steel, fore):
+    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord):
         if not only or f.__name__ in only: f()
     print('->', OUT)
