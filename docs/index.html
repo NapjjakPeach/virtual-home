@@ -480,7 +480,7 @@ const DEFAULT_PLAN = {
   // 처음 들어온 사람에게 기본으로 놓이는 가구 (끌어서 옮기거나 지울 수 있음, 위치는 도면 mm)
   // t: 기본값 판 번호. 올리면 아무도 손대지 않은 기본 가구가 새 값으로 바뀐다 (누가 옮긴 건 그대로)
   furniture: [
-    { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 460, s: 'platbed', c: '#e9e3d9', px: 8617, py: 8590, rot: -90, t: 3 },   // 삼익 로우브 평상형 LK(1800×2100×100) + ACE 벨루체 K 매트리스(1670×2075×360)
+    { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 460, s: 'platbed', m: 'lowb-velluce-k', c: '#e9e3d9', px: 8617, py: 8590, rot: -90, t: 4 },   // 삼익 로우브 평상형 LK(1800×2100×100) + ACE 벨루체 K 매트리스(1670×2075×360)
     { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
     { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 630, h: 1800, s: 'fridge', c: '#cfd3d6', px: 2117, py: 4530, rot: 180 }
   ]
@@ -1996,7 +1996,35 @@ const SHAPES = { box: 1, bed: 1, platbed: 1, sofa: 1, table: 1, chair: 1, rug: 1
 let AC_SHADOW = null;   // 스탠드 에어컨 바닥 그늘 (부드러운 원형)
 const LAMPS = { floorlamp: { cd: 12 }, tablelamp: { cd: 6 }, pendant: { cd: 11 } };   // 빛 세기(칸델라, 거리 제곱으로 줄어듦)
 const LC = { warm: { n: '전구색', c: '#ffc690' }, neutral: { n: '주백색', c: '#ffeedd' }, cool: { n: '주광색', c: '#e6efff' } };
-const NOBLOCK = { rug: 1, pendant: 1 };   // 바닥 자리를 차지하지 않는 것 (겹침·부딪힘 판정에서 뺀다)
+const NOBLOCK = { rug: 1, pendant: 1 };
+/* 실제 제품 3D 모델 (tools/make_*.py로 만든 GLB). 바닥 가운데가 원점, 앞 = +z (침대는 머리 = -z).
+   가구에 m(모델 이름)이 있으면 모양(s)으로 먼저 그려 두고, 모델을 받는 대로 바꿔 끼운다 */
+const MODELS = {
+  'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 }   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
+};
+const modelCache = new Map();
+function loadModel(key) {
+  if (!modelCache.has(key)) modelCache.set(key, import('three/addons/loaders/GLTFLoader.js')
+    .then(({ GLTFLoader }) => new GLTFLoader().loadAsync(MODELS[key].url + '?v=' + MODELS[key].v))
+    .then(gltf => gltf.scene)
+    .catch(e => { console.warn('모델을 못 불러옴', key, e); return null; }));
+  return modelCache.get(key);
+}
+function attachModel(g, it, mats) {
+  loadModel(it.m).then(src => {
+    if (!src || furnMeshes.get(it.id) !== g) return;   // 그사이 다시 그려졌거나 지워짐
+    const M = MODELS[it.m], o = src.clone(true);
+    o.scale.set(it.w / M.w, it.h / M.h, it.d / M.d);
+    for (const c of [...g.children]) if (!c.userData.furnLabel) { g.remove(c); disposeObj(c); }
+    mats.length = 0;
+    o.traverse(c => {
+      if (!c.isMesh) return;
+      c.castShadow = c.receiveShadow = true; c.userData.sharedGeo = true; c.userData.furnId = it.id;
+      c.material = c.material.clone(); c.material.envMapIntensity = curEnv(); mats.push(c.material);   // 재질만 가구마다 따로 (겹침 경고 색)
+    });
+    g.add(o); scheduleFurnRefresh();
+  });
+}   // 바닥 자리를 차지하지 않는 것 (겹침·부딪힘 판정에서 뺀다)
 const FURN_COLORS = ['#d9cbb5', '#8a9aa6', '#b68a5d', '#4f4a45', '#e8e2d6', '#cfd3d6', '#7d9a7e', '#c4867a'];
 const PRESETS = [
   ['침실', [['슈퍼싱글 침대', 1100, 2000, 450, 'bed', '#d9cbb5'], ['퀸 침대', 1500, 2000, 450, 'bed', '#d9cbb5'], ['킹 침대', 1600, 2000, 450, 'bed', '#d9cbb5'], ['평상형 저상 침대', 1800, 2100, 460, 'platbed', '#e9e3d9'],
@@ -2048,8 +2076,9 @@ function pillSprite(text, bg, fg = '#fff') {
 }
 function disposeObj(o) {
   o.traverse(c => {
-    if (c.geometry) c.geometry.dispose();
-    for (const m of Array.isArray(c.material) ? c.material : [c.material]) if (m) { if (m.map) m.map.dispose(); m.dispose(); }
+    const shared = c.userData && c.userData.sharedGeo;   // 모델에서 복제한 건 모양·그림을 같이 쓰므로 재질만 버린다
+    if (c.geometry && !shared) c.geometry.dispose();
+    for (const m of Array.isArray(c.material) ? c.material : [c.material]) if (m) { if (m.map && !shared) m.map.dispose(); m.dispose(); }
   });
 }
 
@@ -2063,6 +2092,7 @@ function cleanItem(o) {
     const dim = v => Math.round(clamp(Number(v) || 0, 10, 6000));
     const f = { id: o.id, k: 'f', n: str(o.n, 20) || '가구', w: Math.max(50, dim(o.w)), d: Math.max(50, dim(o.d)), h: dim(o.h), x: num(o.x, 40), z: num(o.z, 40), r: num(o.r, 7), c: okColor(o.c), s: SHAPES[o.s] ? o.s : 'box', o: o2, t: o.t, by: str(o.by, 12) };
     if (LAMPS[f.s]) { f.on = o.on === 0 || o.on === false ? 0 : 1; f.lc = LC[o.lc] ? o.lc : 'warm'; }
+    if (typeof o.m === 'string' && MODELS[o.m]) f.m = o.m;
     return f;
   }
   if (o.k === 'p') return { id: o.id, k: 'p', n: str(o.n, 80), x: num(o.x, 40), y: clamp(num(o.y, 10), 0, 4), z: num(o.z, 40), done: !!o.done, o: o2, t: o.t, by: str(o.by, 12) };
@@ -2116,7 +2146,7 @@ function seedFurniture() {
     const rev = Math.max(1, Math.min(1e6, Math.floor(Number(f.t) || 1))), cur = board.items.get(f.id);
     if (cur && cur.t >= rev) continue;
     const [x, z] = W(Number(f.px) || 0, Number(f.py) || 0);
-    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, x: Math.round(x * 1e4) / 1e4, z: Math.round(z * 1e4) / 1e4, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: rev });
+    const it = cleanItem({ id: f.id, k: 'f', n: f.n, w: f.w, d: f.d, h: f.h, s: f.s, c: f.c, m: f.m, x: Math.round(x * 1e4) / 1e4, z: Math.round(z * 1e4) / 1e4, r: (Number(f.rot) || 0) * Math.PI / 180, o: 1, t: rev });
     if (it) { board.items.set(it.id, it); boardChanged(it); }
   }
 }
@@ -2125,7 +2155,7 @@ function snapWorld(x, z) {   // 도면 좌표로 10mm 단위에 맞춘다
   const [px, py] = P(x, z), [sx, sz] = W(Math.round(px / 10) * 10, Math.round(py / 10) * 10);
   return [Math.round(sx * 1e4) / 1e4, Math.round(sz * 1e4) / 1e4];
 }
-function furnSig(it) { return [it.w, it.d, it.h, it.c, it.s, it.n, it.on, it.lc].join('|'); }
+function furnSig(it) { return [it.w, it.d, it.h, it.c, it.s, it.n, it.on, it.lc, it.m].join('|'); }
 function buildFurnObject(it) {
   const g = new THREE.Group(), W2 = it.w / 1000, D2 = it.d / 1000, H2 = Math.max(it.h, 8) / 1000;
   const mats = [];
@@ -2247,6 +2277,7 @@ function buildFurnObject(it) {
   g.add(label);
   g.userData = { id: it.id, mats, sig: furnSig(it) };
   g.traverse(o => { if (o.isMesh && !o.userData.furnLabel) o.userData.furnId = it.id; });
+  if (MODELS[it.m]) attachModel(g, it, mats);
   return g;
 }
 function lampBulb(g, it, y) {   // 전구: 켜면 빛 색으로 밝게
@@ -3040,7 +3071,7 @@ function renderPinList() {
 
 room = createRoom();
 if (room) attachBoard(room);
-if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, putItem, get model() { return model; } };   // 테스트용 (?debug일 때만)
+if (new URLSearchParams(location.search).has('debug')) window.__vh = { me, state, orbit, camera, findPath, walkTo, roomSpot, W, P, showPing, THREE, board, putItem, scene, get model() { return model; } };   // 테스트용 (?debug일 때만)
 if (!room) { connState = 'solo'; setConn('solo'); renderPeople(); }
 else {
   connState = 'wait'; setConn('wait');
