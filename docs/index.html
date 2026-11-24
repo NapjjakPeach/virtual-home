@@ -2077,6 +2077,23 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+/* 새 버전 알림: 브라우저가 예전 페이지를 쓰고 있으면(캐시) 새로고침을 권한다.
+   지금 돌고 있는 스크립트 본문이 서버의 최신 index.html에 그대로 들어 있지 않으면 예전 것 */
+(() => {
+  const mine = (document.querySelector('script[type="module"]') || {}).textContent || '';
+  let told = false;
+  const check = () => {
+    if (told || !mine || location.protocol === 'file:') return;
+    fetch(location.pathname + '?nocache=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '').then(src => {
+      if (src && (!src.includes(mine.slice(0, 4000)) || !src.includes(mine.slice(-4000)))) {   // 앞뒤 일부만 비교 (전체 비교는 느림)
+        told = true; toast('사이트가 새로 바뀌었어요. 새로고침하면 최신으로 보여요', '새로고침', () => location.reload());
+      }
+    }).catch(() => {});
+  };
+  setTimeout(check, 4000); setInterval(check, 5 * 60 * 1000);
+  addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
+
 /* ---------------- boot ---------------- */
 applyModel(model);
 { const e = model.rooms.find(r => r.id === 'entry'); [me.x, me.z] = W((e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2); }
