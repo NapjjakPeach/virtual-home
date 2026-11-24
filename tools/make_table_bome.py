@@ -47,7 +47,7 @@ WOOD = tex_mat('rubberwood', 'rubber_diff.png', 'rubber_nor.png', rough=.5)
 PLY = tex_mat('plywood_edge', 'ply_diff.png', rough=.6)
 HPM = bpy.data.materials.new('hpm_white'); HPM.use_nodes = True
 hb = HPM.node_tree.nodes['Principled BSDF']
-hb.inputs['Base Color'].default_value = (.86, .86, .845, 1); hb.inputs['Roughness'].default_value = .38
+hb.inputs['Base Color'].default_value = (.93, .93, .915, 1); hb.inputs['Roughness'].default_value = .38
 
 
 def box_uv(o, grain, size=(.5, 1.0)):

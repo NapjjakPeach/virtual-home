@@ -120,11 +120,12 @@ def rubber(W=1024, H=2048):
     rings = np.sin(u / W * 2 * np.pi * 11)
     fine = noise((H, W), (50, 1.0))
     pores = (noise((H, W), (4, .5)) > 2.4).astype(np.float32)
-    t = .35 * rings + .45 * fine
+    streak = noise((H, W), (300, 2.5))                                    # 결 따라 길게 진한 줄
+    t = .35 * rings + .45 * fine + .3 * np.clip(streak, 0, None)
     t = (t - t.min()) / (t.max() - t.min())
-    light, dark = hexlin('#c99a5e'), hexlin('#a3743f')
-    col = light * (1 - t[..., None] * .5) + dark * (t[..., None] * .5)
-    col *= (1 - .1 * pores)[..., None]
+    light, dark = hexlin('#d0a466'), hexlin('#9a6a34')
+    col = light * (1 - t[..., None] * .68) + dark * (t[..., None] * .68)
+    col *= (1 - .16 * pores)[..., None]
     save_rgb(to_srgb(col), 'rubber_diff.png')
     save_rgb(normal_from_height(-.00008 * pores + .00003 * fine, 1, .5 / W), 'rubber_nor.png')
 
@@ -154,10 +155,11 @@ def cord(N=1024):
     s = np.abs(np.sin(np.pi * x / pitch))
     rib = np.repeat(s ** .6, N, 0)                                        # 이랑 높이 (0 = 골)
     pile = noise((N, N), (6, .5)) * .5 + noise((N, N), 30) * .5           # 털 결 얼룩
-    for name, base in (('cheese', '#e3992f'), ('green', '#46592f')):
-        col = hexlin(base) * (.72 + .3 * rib[..., None] + .04 * pile[..., None])
+    fibre = noise((N, N), (4, .35))                                       # 이랑 위 잔털
+    for name, base in (('cheese', '#f6b040'), ('green', '#617a45')):
+        col = hexlin(base) * (.64 + .42 * rib[..., None] + .05 * pile[..., None] + .04 * fibre[..., None] * rib[..., None])
         save_rgb(to_srgb(col), f'cord_{name}_diff.png')
-    save_rgb(normal_from_height(.0012 * rib + .00004 * pile, 1, .2 / N), 'cord_nor.png')
+    save_rgb(normal_from_height(.0016 * rib + .00004 * pile + .00002 * fibre, 1, .2 / N), 'cord_nor.png')
 
 
 # ---------------- 헤어라인 메탈 (냉장고 문) ----------------

@@ -90,7 +90,7 @@
     { "id": "aircon0living", "n": "스탠드 에어컨", "w": 350, "d": 300, "h": 1800, "s": "aircon", "c": "#f4f4f1", "px": 2433, "py": 3615, "rot": 90 },
     { "id": "fridge0kitchen", "n": "냉장고", "w": 595, "d": 635, "h": 1855, "s": "fridge", "m": "carrier-312w", "c": "#f3f2ef", "px": 2117, "py": 4535, "rot": 180, "t": 3 },
     { "id": "table0kitchen", "n": "식탁", "w": 1200, "d": 700, "h": 740, "s": "table", "m": "bome-1200", "c": "#e9e8e3", "px": 3666, "py": 4815, "rot": 90, "t": 2 },
-    { "id": "chair0kitchen", "n": "의자", "w": 500, "d": 490, "h": 800, "s": "chair", "m": "dublin-cheese", "c": "#e3992f", "px": 3060, "py": 4815, "rot": 90, "t": 1 },
-    { "id": "chair1kitchen", "n": "의자", "w": 500, "d": 490, "h": 800, "s": "chair", "m": "dublin-green", "c": "#46592f", "px": 4270, "py": 4815, "rot": -90, "t": 1 }
+    { "id": "chair0kitchen", "n": "의자", "w": 500, "d": 495, "h": 800, "s": "chair", "m": "dublin-cheese", "c": "#e3992f", "px": 3060, "py": 4815, "rot": 90, "t": 1 },
+    { "id": "chair1kitchen", "n": "의자", "w": 500, "d": 495, "h": 800, "s": "chair", "m": "dublin-green", "c": "#46592f", "px": 4270, "py": 4815, "rot": -90, "t": 1 }
   ]
 }

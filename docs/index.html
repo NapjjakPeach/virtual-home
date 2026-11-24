@@ -490,8 +490,8 @@ const DEFAULT_PLAN = {
     { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
     { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 635, h: 1855, s: 'fridge', m: 'carrier-312w', c: '#f3f2ef', px: 2117, py: 4535, rot: 180, t: 3 },
     { id: 'table0kitchen', n: '식탁', w: 1200, d: 700, h: 740, s: 'table', m: 'bome-1200', c: '#e9e8e3', px: 3666, py: 4815, rot: 90, t: 2 },   // 도면 식탁 자리: 남쪽 벽에 붙여 세로로, 펜던트 아래
-    { id: 'chair0kitchen', n: '의자', w: 500, d: 490, h: 800, s: 'chair', m: 'dublin-cheese', c: '#e3992f', px: 3060, py: 4815, rot: 90, t: 1 },   // 식탁 서쪽, 동쪽을 보고
-    { id: 'chair1kitchen', n: '의자', w: 500, d: 490, h: 800, s: 'chair', m: 'dublin-green', c: '#46592f', px: 4270, py: 4815, rot: -90, t: 1 }   // 식탁 동쪽, 서쪽을 보고
+    { id: 'chair0kitchen', n: '의자', w: 500, d: 495, h: 800, s: 'chair', m: 'dublin-cheese', c: '#e3992f', px: 3060, py: 4815, rot: 90, t: 1 },   // 식탁 서쪽, 동쪽을 보고
+    { id: 'chair1kitchen', n: '의자', w: 500, d: 495, h: 800, s: 'chair', m: 'dublin-green', c: '#46592f', px: 4270, py: 4815, rot: -90, t: 1 }   // 식탁 동쪽, 서쪽을 보고
   ]
 };
 
@@ -1928,6 +1928,7 @@ function syncBaked() {
   if (!ok && BAKED.group && BAKED.group.parent) scene.remove(BAKED.group);
   BAKED.active = !!ok;
   if (aoPass) aoPass.enabled = !ok;   // 구운 빛에 구석 그늘이 이미 들어 있다
+  setTimeout(queueAllProbes, 0);       // 빛이 바뀌었으니 반사도 다시 찍는다
   hemi.intensity = ok ? BAKED.meta.hemi : (night ? LOOK.night : LOOK.day).hemi;
   sun.visible = !night && !ok;
   renderer.toneMappingExposure = ok ? BAKED.meta.exposure * TONE_GAIN.baked : (night ? LOOK.night : LOOK.day).exposure * TONE_GAIN.live;
@@ -2090,7 +2091,7 @@ function applyLook() {
   scene.traverse(o => {
     if (o.isPointLight && o.userData.roomLight) o.visible = night && ceilOn;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
-    for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap) mt.envMapIntensity = L.env;
+    for (const mt of ms) if (mt && mt.isMeshStandardMaterial && !mt.lightMap && !(mt.userData.probe && mt.envMap)) mt.envMapIntensity = L.env;
   });
   syncBaked();
   $('#btnNight').setAttribute('aria-pressed', night);
@@ -2285,16 +2286,95 @@ const LC = { warm: { n: '전구색', c: '#ffc690' }, neutral: { n: '주백색', 
 const NOBLOCK = { rug: 1, pendant: 1 };
 /* 실제 제품 3D 모델 (tools/make_*.py로 만든 GLB). 바닥 가운데가 원점, 앞 = +z (침대는 머리 = -z).
    가구에 m(모델 이름)이 있으면 모양(s)으로 먼저 그려 두고, 모델을 받는 대로 바꿔 끼운다 */
+const feet4 = (x, z) => [[-x, -z], [x, -z], [-x, z], [x, z]];
 const MODELS = {
   'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 },   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
   'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480 },     // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
   'clawind-302': { url: 'models/fridge_clawind_302.glb', v: 1, w: 595, d: 630, h: 1880 },           // 캐리어 클라윈드 피트인 302L KRNC302SEI1 (실버)
   'carrier-312w': { url: 'models/fridge_carrier_312w.glb', v: 1, w: 595, d: 635, h: 1855 },         // 캐리어 312L 2도어 콤비 KRNC312WPM1 (화이트)
-  'fore-1200': { url: 'models/table_fore_1200.glb', v: 2, w: 1200, d: 750, h: 760 },               // 한샘 포레 원목 4인 식탁
-  'bome-1200': { url: 'models/table_bome_1200.glb', v: 1, w: 1200, d: 700, h: 740 },               // 룸앤홈 보메 원목 식탁 1200 (화이트)
-  'dublin-cheese': { url: 'models/chair_dublin_cheese.glb', v: 1, w: 500, d: 491, h: 801 },        // 룸앤홈 더블린 체어 치즈 코듀로이
-  'dublin-green': { url: 'models/chair_dublin_green.glb', v: 1, w: 500, d: 491, h: 801 }           // 룸앤홈 더블린 체어 딥그린 코듀로이
+  'fore-1200': { url: 'models/table_fore_1200.glb', v: 2, w: 1200, d: 750, h: 760, feet: feet4(.564, .331), under: .16 },   // 한샘 포레 원목 4인 식탁
+  'bome-1200': { url: 'models/table_bome_1200.glb', v: 3, w: 1200, d: 700, h: 740, feet: feet4(.555, .29), under: .16 },     // 룸앤홈 보메 원목 식탁 1200 (화이트)
+  'dublin-cheese': { url: 'models/chair_dublin_cheese.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },   // 룸앤홈 더블린 체어 치즈 코듀로이
+  'dublin-green': { url: 'models/chair_dublin_green.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 }      // 룸앤홈 더블린 체어 딥그린 코듀로이
 };
+/* 상품 사진처럼: 모델 재질 이름으로 재질 성격을 정한다.
+   크롬은 방을 거울처럼 비추고(반사 탐침), 코듀로이는 털 결 광택(sheen), 원목·HPM은 얇은 코팅(clearcoat) */
+const MAT_LOOK = [
+  [/^chrome/, { metalness: 1, roughness: .06, probe: 1 }],
+  [/^cord_cheese/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#ffd28a', normal: 1.3, probe: .35 }],
+  [/^cord_green/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#9fb67e', normal: 1.3, probe: .35 }],
+  [/^cord_/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#dddddd', normal: 1.3, probe: .35 }],
+  [/^hpm_/, { roughness: .42, clearcoat: .4, clearcoatRoughness: .22, probe: .85 }],
+  [/^(rubberwood|wood_fore)/, { roughness: .52, clearcoat: .25, clearcoatRoughness: .38, probe: .7 }],
+  [/^plywood_edge/, { roughness: .6, probe: .5 }]
+];
+function lookMaterial(m) {
+  const r = MAT_LOOK.find(([re]) => re.test((m.name || '').replace(/\.\d{3}$/, '')));
+  if (!r || !m.isMeshStandardMaterial) return m;
+  const L = r[1], p = new THREE.MeshPhysicalMaterial();
+  THREE.MeshStandardMaterial.prototype.copy.call(p, m);
+  p.defines = { STANDARD: '', PHYSICAL: '' };
+  if (L.metalness != null) p.metalness = L.metalness;
+  p.roughness = L.roughness;
+  if (L.clearcoat) { p.clearcoat = L.clearcoat; p.clearcoatRoughness = L.clearcoatRoughness; }
+  if (L.sheen) { p.sheen = L.sheen; p.sheenRoughness = L.sheenRoughness; p.sheenColor.set(L.sheenColor); }
+  if (L.normal && p.normalMap) p.normalScale.multiplyScalar(L.normal);
+  p.userData.probe = L.probe || 0;
+  m.dispose();
+  return p;
+}
+/* 반사 탐침: 가구 자리에서 실제 방을 큐브맵으로 찍어 그 가구의 반짝이는 재질에 비친다 (옮기거나 밤낮이 바뀌면 다시 찍음) */
+const PROBE = { rt: null, cam: null, queue: new Set(), timer: 0, tex: new Map() };
+function queueProbe(id) { PROBE.queue.add(id); clearTimeout(PROBE.timer); PROBE.timer = setTimeout(runProbes, 350); }
+function queueProbesNear(it) {
+  for (const [id, g] of furnMeshes) {
+    const o = board.items.get(id);
+    if (o && g.userData.probeMats && g.userData.probeMats.length && Math.hypot(o.x - it.x, o.z - it.z) < 3) queueProbe(id);
+  }
+}
+function queueAllProbes() { for (const [id, g] of furnMeshes) if (g.userData.probeMats && g.userData.probeMats.length) queueProbe(id); }
+function dropProbe(id) { const t = PROBE.tex.get(id); if (t) { t.dispose(); PROBE.tex.delete(id); } }
+function runProbes() {
+  if (!PROBE.rt) {
+    PROBE.rt = new THREE.WebGLCubeRenderTarget(isCoarse ? 128 : 256, { type: THREE.HalfFloatType });
+    PROBE.cam = new THREE.CubeCamera(.03, 80, PROBE.rt);
+  }
+  const hide = [pinGroup, measureGroup];
+  for (const [, g] of furnMeshes) for (const c of g.children) if (c.userData.furnLabel) hide.push(c);
+  const was = hide.map(o => o.visible); hide.forEach(o => { o.visible = false; });
+  for (const id of PROBE.queue) {
+    const g = furnMeshes.get(id), it = board.items.get(id);
+    if (!g || !it || !g.userData.probeMats || !g.userData.probeMats.length) continue;
+    g.visible = false;
+    PROBE.cam.position.set(it.x, clamp(it.h / 2000, .35, 1.2), it.z);
+    PROBE.cam.update(renderer, scene);
+    g.visible = true;
+    dropProbe(id);
+    const env = pmrem.fromCubemap(PROBE.rt.texture); PROBE.tex.set(id, env);
+    for (const m of g.userData.probeMats) { m.envMap = env.texture; m.envMapIntensity = m.userData.probe; m.needsUpdate = true; }
+  }
+  PROBE.queue.clear();
+  hide.forEach((o, i) => { o.visible = was[i]; });
+}
+/* 바닥에 닿는 부드러운 그늘: 다리 끝마다 짙은 점 + 가구 밑 넓고 옅은 그늘 */
+let SOFT_DOT = null, SOFT_RECT = null;
+function contactShadows(g, it, M) {
+  SOFT_DOT = SOFT_DOT || canvasTex(64, 64, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(0,0,0,.8)'); gr.addColorStop(.35, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+  SOFT_RECT = SOFT_RECT || canvasTex(128, 128, (c, w, h) => {
+    const img = c.createImageData(w, h), e = 30;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const dx = Math.max(0, e - x, x - (w - 1 - e)), dy = Math.max(0, e - y, y - (h - 1 - e)), d = Math.hypot(dx, dy) / e;
+      img.data[(y * w + x) * 4 + 3] = Math.round(255 * Math.pow(Math.max(0, 1 - d), 2));
+    }
+    c.putImageData(img, 0, 0);
+  });
+  const sx = it.w / M.w, sz = it.d / M.d, add = (tex, w, d, x, z, op, y) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: tex, color: '#000', transparent: true, opacity: op, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.userData.noAO = true; m.renderOrder = 1; g.add(m);
+  };
+  if (M.under) add(SOFT_RECT, it.w / 1000 * .92, it.d / 1000 * .92, 0, 0, M.under, .0015);
+  for (const [x, z] of M.feet || []) add(SOFT_DOT, .1, .1, x * sx, z * sz, .55, .002);
+}
 const modelCache = new Map();
 function loadModel(key) {
   if (!modelCache.has(key)) modelCache.set(key, import('three/addons/loaders/GLTFLoader.js')
@@ -2310,12 +2390,19 @@ function attachModel(g, it, mats) {
     o.scale.set(it.w / M.w, it.h / M.h, it.d / M.d);
     for (const c of [...g.children]) if (!c.userData.furnLabel) { g.remove(c); disposeObj(c); }
     mats.length = 0;
+    const probeMats = [];
     o.traverse(c => {
       if (!c.isMesh) return;
       c.castShadow = c.receiveShadow = true; c.userData.sharedGeo = true; c.userData.furnId = it.id;
-      c.material = c.material.clone(); c.material.envMapIntensity = curEnv(); mats.push(c.material);   // 재질만 가구마다 따로 (겹침 경고 색)
+      const m = lookMaterial(c.material.clone()); c.material = m; mats.push(m);   // 재질만 가구마다 따로 (겹침 경고 색)
+      m.envMapIntensity = curEnv();                                               // 반사 탐침을 찍기 전까지는 기본 반사
+      if (m.userData.probe) probeMats.push(m);
     });
-    g.add(o); scheduleFurnRefresh();
+    g.add(o);
+    if (M.feet || M.under) contactShadows(g, it, M);
+    g.userData.probeMats = probeMats;
+    if (probeMats.length) queueProbe(it.id);
+    scheduleFurnRefresh();
   });
 }   // 바닥 자리를 차지하지 않는 것 (겹침·부딪힘 판정에서 뺀다)
 const FURN_COLORS = ['#d9cbb5', '#8a9aa6', '#b68a5d', '#4f4a45', '#e8e2d6', '#cfd3d6', '#7d9a7e', '#c4867a'];
@@ -2616,6 +2703,7 @@ function renderFurn(it) {
   let g = furnMeshes.get(it.id);
   if (it.del) {
     if (g) { furnGroup.remove(g); disposeObj(g); furnMeshes.delete(it.id); }
+    dropProbe(it.id); queueProbesNear(it);
     if (furnSel === it.id) selectFurn(null);
     if (lampPool.length) syncLamps();
     return;
@@ -2624,7 +2712,9 @@ function renderFurn(it) {
     if (g) { furnGroup.remove(g); disposeObj(g); }
     g = buildFurnObject(it); furnGroup.add(g); furnMeshes.set(it.id, g);
   }
+  const moved = g.position.x !== it.x || g.position.z !== it.z || g.rotation.y !== it.r;
   g.position.set(it.x, 0, it.z); g.rotation.y = it.r;
+  if (moved) queueProbesNear(it);
   if (it.id === furnSel) syncSelOutline();
   if (LAMPS[it.s] || lampPool.length) syncLamps();
 }
