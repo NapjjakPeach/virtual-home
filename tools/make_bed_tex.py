@@ -1,4 +1,4 @@
-"""침대 모델용 질감을 직접 생성한다 (사진을 쓰지 않음, 전부 수식으로 그림).
+"""가구 모델용 질감(침대·헤드 선반)을 직접 생성한다 (사진을 쓰지 않음, 전부 수식으로 그림).
 
     python tools/make_bed_tex.py
 
@@ -70,6 +70,23 @@ def oak(W=1024, H=2048):
     save_rgb(to_srgb(col), 'oak_diff.png')
     h = -.00015 * pores + .00004 * fine
     save_rgb(normal_from_height(h, 1, .5 / W), 'oak_nor.png')
+
+
+# ---------------- 메이플 (침대 헤드 선반) ----------------
+def maple(W=1024, H=1024):
+    """메이플: 오크보다 밝고 결이 곱고 물관이 거의 없다. 0.5 m × 0.5 m, 결은 가로(u) 방향"""
+    print('maple')
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    warp = np.asarray(Image.fromarray(noise((H // 8, W // 8), 5, False)).resize((W, H), Image.BICUBIC))
+    v = y + warp * 18
+    rings = np.sin(v / H * 2 * np.pi * 14)
+    fine = noise((H, W), (1.0, 50))                                       # 가로로 긴 가는 결
+    t = .35 * rings + .5 * fine
+    t = (t - t.min()) / (t.max() - t.min())
+    light, dark = hexlin('#e6cda6'), hexlin('#c9a77a')
+    col = light * (1 - t[..., None] * .5) + dark * (t[..., None] * .5)
+    save_rgb(to_srgb(col), 'maple_diff.png')
+    save_rgb(normal_from_height(.00003 * fine, 1, .5 / W), 'maple_nor.png')
 
 
 # ---------------- 필로우탑 윗면 ----------------
@@ -149,5 +166,8 @@ def band(W=1024, H=768, width=.12, height=.09):
 
 
 if __name__ == '__main__':
-    oak(); quilt(); wave(); band()
+    import sys
+    only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
+    for f in (oak, quilt, wave, band, maple):
+        if not only or f.__name__ in only: f()
     print('->', OUT)

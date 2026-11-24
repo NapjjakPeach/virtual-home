@@ -2209,7 +2209,8 @@ const NOBLOCK = { rug: 1, pendant: 1 };
 /* 실제 제품 3D 모델 (tools/make_*.py로 만든 GLB). 바닥 가운데가 원점, 앞 = +z (침대는 머리 = -z).
    가구에 m(모델 이름)이 있으면 모양(s)으로 먼저 그려 두고, 모델을 받는 대로 바꿔 끼운다 */
 const MODELS = {
-  'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 }   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
+  'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 },   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
+  'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480 }      // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
 };
 const modelCache = new Map();
 function loadModel(key) {
