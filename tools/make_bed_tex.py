@@ -162,6 +162,30 @@ def cord(N=1024):
     save_rgb(normal_from_height(.0016 * rib + .00004 * pile + .00002 * fibre, 1, .2 / N), 'cord_nor.png')
 
 
+# ---------------- 슬럽 직물 (싱겔 패브릭 체어 크림 · 차콜) ----------------
+def slub(N=1024):
+    """폴리에스터 평직: 0.8 mm 실이 가로·세로로 엇갈리고, 실 굵기가 고르지 않은(슬럽) 마디와 섞인 색 실이 보인다.
+    0.1 m × 0.1 m 한 장. 색은 상품 사진(크림 #e9e2d6, 차콜 #3d3f43)을 사이트 조명에 맞춤"""
+    print('slub')
+    y, x = np.mgrid[0:N, 0:N].astype(np.float32)
+    p = 8.0                                                               # 실 간격 0.8 mm
+    wx, wy = noise((N, N), (40, 2)) * 1.2, noise((N, N), (2, 40)) * 1.2  # 실이 살짝 굽음
+    cx, cy = np.floor((x + wx) / p), np.floor((y + wy) / p)
+    over = ((cx + cy) % 2).astype(np.float32)                             # 평직: 가로실·세로실이 번갈아 위로
+    fx, fy = ((x + wx) / p) % 1, ((y + wy) / p) % 1
+    weft = np.sin(np.pi * fy) ** .7 * (1 + .5 * np.clip(noise((N, N), (1.5, 60)), -1, 2))   # 가로실 + 슬럽 마디
+    warp = np.sin(np.pi * fx) ** .7 * (1 + .3 * np.clip(noise((N, N), (60, 1.5)), -1, 2))
+    h = over * weft + (1 - over) * warp
+    tone = noise((N // 8, N // 8), .6)                         # 실마다 다른 섞인 색
+    tone = np.asarray(Image.fromarray(tone).resize((N, N), Image.NEAREST))
+    fleck = (noise((N, N), (1.2, 25)) > 2.3).astype(np.float32)           # 밝은 색 실 마디
+    for name, base, fl in (('cream', '#f7f0e4', .06), ('charcoal', '#6f737a', .5)):
+        col = hexlin(base) * (.84 + .2 * h[..., None] + .05 * tone[..., None])
+        col = col * (1 - fleck[..., None] * fl * .5) + hexlin('#8a8a88') * fleck[..., None] * fl * .5
+        save_rgb(to_srgb(col), f'slub_{name}_diff.png')
+    save_rgb(normal_from_height(.00035 * h, 1, .1 / N), 'slub_nor.png')
+
+
 # ---------------- 헤어라인 메탈 (냉장고 문) ----------------
 def steel(W=1024, H=1024):
     """가로 헤어라인(브러시드) 은색 메탈. 0.3 m × 0.3 m 반복"""
@@ -254,6 +278,6 @@ def band(W=1024, H=768, width=.12, height=.09):
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord):
+    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord, slub):
         if not only or f.__name__ in only: f()
     print('->', OUT)

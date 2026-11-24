@@ -490,8 +490,8 @@ const DEFAULT_PLAN = {
     { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
     { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 635, h: 1855, s: 'fridge', m: 'carrier-312w', c: '#f3f2ef', px: 2117, py: 4535, rot: 180, t: 3 },
     { id: 'table0kitchen', n: '식탁', w: 1200, d: 700, h: 740, s: 'table', m: 'bome-1200', c: '#e9e8e3', px: 3666, py: 4815, rot: 90, t: 2 },   // 도면 식탁 자리: 남쪽 벽에 붙여 세로로, 펜던트 아래
-    { id: 'chair0kitchen', n: '의자', w: 500, d: 495, h: 800, s: 'chair', m: 'dublin-cheese', c: '#e3992f', px: 3060, py: 4815, rot: 90, t: 1 },   // 식탁 서쪽, 동쪽을 보고
-    { id: 'chair1kitchen', n: '의자', w: 500, d: 495, h: 800, s: 'chair', m: 'dublin-green', c: '#46592f', px: 4270, py: 4815, rot: -90, t: 1 }   // 식탁 동쪽, 서쪽을 보고
+    { id: 'chair0kitchen', n: '의자', w: 450, d: 560, h: 780, s: 'chair', m: 'singel-cream', c: '#e4dccd', px: 3025, py: 4815, rot: 90, t: 2 },   // 룸앤홈 싱겔 크림: 식탁 서쪽, 동쪽을 보고
+    { id: 'chair1kitchen', n: '의자', w: 450, d: 560, h: 780, s: 'chair', m: 'singel-charcoal', c: '#3d3f43', px: 4307, py: 4815, rot: -90, t: 2 }   // 룸앤홈 싱겔 차콜: 식탁 동쪽, 서쪽을 보고
   ]
 };
 
@@ -2295,12 +2295,17 @@ const MODELS = {
   'fore-1200': { url: 'models/table_fore_1200.glb', v: 2, w: 1200, d: 750, h: 760, feet: feet4(.564, .331), under: .16 },   // 한샘 포레 원목 4인 식탁
   'bome-1200': { url: 'models/table_bome_1200.glb', v: 3, w: 1200, d: 700, h: 740, feet: feet4(.555, .29), under: .16 },     // 룸앤홈 보메 원목 식탁 1200 (화이트)
   'dublin-cheese': { url: 'models/chair_dublin_cheese.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },   // 룸앤홈 더블린 체어 치즈 코듀로이
-  'dublin-green': { url: 'models/chair_dublin_green.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 }      // 룸앤홈 더블린 체어 딥그린 코듀로이
+  'dublin-green': { url: 'models/chair_dublin_green.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },     // 룸앤홈 더블린 체어 딥그린 코듀로이
+  'singel-cream': { url: 'models/chair_singel_cream.glb', v: 3, w: 451, d: 560, h: 782, feet: [[-.214, .269], [.214, .269], [-.214, -.268], [.214, -.268]], under: .3 },        // 룸앤홈 싱겔 패브릭 체어 크림
+  'singel-charcoal': { url: 'models/chair_singel_charcoal.glb', v: 3, w: 451, d: 560, h: 782, feet: [[-.214, .269], [.214, .269], [-.214, -.268], [.214, -.268]], under: .3 }   // 룸앤홈 싱겔 패브릭 체어 차콜
 };
 /* 상품 사진처럼: 모델 재질 이름으로 재질 성격을 정한다.
    크롬은 방을 거울처럼 비추고(반사 탐침), 코듀로이는 털 결 광택(sheen), 원목·HPM은 얇은 코팅(clearcoat) */
 const MAT_LOOK = [
   [/^chrome/, { metalness: 1, roughness: .06, probe: 1 }],
+  [/^black_steel/, { metalness: .45, roughness: .36, clearcoat: .3, clearcoatRoughness: .3, probe: .8 }],   // 무광 검정 분체도장
+  [/^slub_cream/, { roughness: .93, sheen: .6, sheenRoughness: .6, sheenColor: '#fff3df', normal: 1.2, probe: .3 }],
+  [/^slub_charcoal/, { roughness: .93, sheen: .6, sheenRoughness: .6, sheenColor: '#7c7e83', normal: 1.2, probe: .3 }],
   [/^cord_cheese/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#ffd28a', normal: 1.3, probe: .35 }],
   [/^cord_green/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#9fb67e', normal: 1.3, probe: .35 }],
   [/^cord_/, { roughness: .95, sheen: 1, sheenRoughness: .42, sheenColor: '#dddddd', normal: 1.3, probe: .35 }],
