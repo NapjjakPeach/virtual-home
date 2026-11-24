@@ -88,6 +88,9 @@
   "furniture": [
     { "id": "bed0room2", "n": "침대", "w": 1800, "d": 2100, "h": 460, "s": "platbed", "m": "lowb-velluce-k", "c": "#e9e3d9", "px": 8617, "py": 8590, "rot": -90, "t": 4 },
     { "id": "aircon0living", "n": "스탠드 에어컨", "w": 350, "d": 300, "h": 1800, "s": "aircon", "c": "#f4f4f1", "px": 2433, "py": 3615, "rot": 90 },
-    { "id": "fridge0kitchen", "n": "냉장고", "w": 595, "d": 630, "h": 1880, "s": "fridge", "m": "clawind-302", "c": "#c9ccce", "px": 2117, "py": 4530, "rot": 180, "t": 2 }
+    { "id": "fridge0kitchen", "n": "냉장고", "w": 595, "d": 635, "h": 1855, "s": "fridge", "m": "carrier-312w", "c": "#f3f2ef", "px": 2117, "py": 4535, "rot": 180, "t": 3 },
+    { "id": "table0kitchen", "n": "식탁", "w": 1200, "d": 700, "h": 740, "s": "table", "m": "bome-1200", "c": "#e9e8e3", "px": 3666, "py": 4815, "rot": 90, "t": 2 },
+    { "id": "chair0kitchen", "n": "의자", "w": 450, "d": 560, "h": 780, "s": "chair", "m": "singel-cream", "c": "#e4dccd", "px": 3025, "py": 4815, "rot": 90, "t": 2 },
+    { "id": "chair1kitchen", "n": "의자", "w": 450, "d": 560, "h": 780, "s": "chair", "m": "singel-cream", "c": "#e4dccd", "px": 4307, "py": 4815, "rot": -90, "t": 3 }
   ]
 }

@@ -89,6 +89,103 @@ def maple(W=1024, H=1024):
     save_rgb(normal_from_height(.00003 * fine, 1, .5 / W), 'maple_nor.png')
 
 
+# ---------------- 원목 (한샘 포레 식탁) ----------------
+def fore(W=1024, H=2048):
+    """포레 식탁 원목: 오크보다 따뜻한 꿀색, 결이 길고 물관이 얕다. 0.5 m × 1.0 m, 결은 세로(v) 방향 (상품 사진 색)"""
+    print('fore')
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    warp = np.asarray(Image.fromarray(noise((H // 8, W // 8), 6, False)).resize((W, H), Image.BICUBIC))
+    u = x + warp * 30 + 10 * np.sin(y / H * 2 * np.pi * 1.3)
+    rings = np.sin(u / W * 2 * np.pi * 7)
+    fine = noise((H, W), (45, 1.1))
+    pores = (noise((H, W), (5, .6)) > 2.2).astype(np.float32)
+    t = .45 * rings + .4 * fine
+    t = (t - t.min()) / (t.max() - t.min())
+    # 사이트에서 가구는 고른 채움빛 + 노출 1.5로 보이므로 사진보다 한 단계 진하게 (화면에서 상품 사진 색이 되도록)
+    light, dark = hexlin('#b97c45'), hexlin('#7f4c22')
+    col = light * (1 - t[..., None] * .62) + dark * (t[..., None] * .62)
+    col *= (1 - .14 * pores)[..., None]
+    save_rgb(to_srgb(col), 'fore_diff.png')
+    save_rgb(normal_from_height(-.0001 * pores + .00003 * fine, 1, .5 / W), 'fore_nor.png')
+
+
+# ---------------- 고무나무 (룸앤홈 보메 식탁 다리·테두리) ----------------
+def rubber(W=1024, H=2048):
+    """고무나무 원목: 밝은 노란 베이지, 결이 곧고 잔잔하다. 0.5 m × 1.0 m, 결은 세로(v) 방향.
+    사이트 조명(노출 1.5)에서 상품 사진 색이 되도록 사진보다 한 단계 진하게"""
+    print('rubber')
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    warp = np.asarray(Image.fromarray(noise((H // 8, W // 8), 6, False)).resize((W, H), Image.BICUBIC))
+    u = x + warp * 20 + 6 * np.sin(y / H * 2 * np.pi * 1.1)
+    rings = np.sin(u / W * 2 * np.pi * 11)
+    fine = noise((H, W), (50, 1.0))
+    pores = (noise((H, W), (4, .5)) > 2.4).astype(np.float32)
+    streak = noise((H, W), (300, 2.5))                                    # 결 따라 길게 진한 줄
+    t = .35 * rings + .45 * fine + .3 * np.clip(streak, 0, None)
+    t = (t - t.min()) / (t.max() - t.min())
+    light, dark = hexlin('#d0a466'), hexlin('#9a6a34')
+    col = light * (1 - t[..., None] * .68) + dark * (t[..., None] * .68)
+    col *= (1 - .16 * pores)[..., None]
+    save_rgb(to_srgb(col), 'rubber_diff.png')
+    save_rgb(normal_from_height(-.00008 * pores + .00003 * fine, 1, .5 / W), 'rubber_nor.png')
+
+
+# ---------------- 합판 옆면 (식탁 상판 모서리) ----------------
+def ply(W=512, H=512):
+    """합판 단면: 1.5 mm 안팎의 얇은 층이 밝고 어둡게 번갈아 쌓임. 0.1 m × 0.1 m, 층은 가로(u) 방향"""
+    print('ply')
+    y = np.arange(H, dtype=np.float32)[:, None]
+    jitter = noise((H, 1), 3)[:, :1] * 1.5
+    layer = (np.floor((y + jitter) / (H * .015)) % 2).astype(np.float32)   # 1.5 mm 층
+    layer = gaussian_filter(np.repeat(layer, W, 1), (.8, 0), mode='wrap')
+    fine = noise((H, W), (1.0, 40))
+    t = np.clip(.65 * layer + .2 * fine * .5 + .2, 0, 1)
+    light, dark = hexlin('#d2a86f'), hexlin('#a87b46')
+    col = light * (1 - t[..., None] * .6) + dark * (t[..., None] * .6)
+    save_rgb(to_srgb(col), 'ply_diff.png')
+
+
+# ---------------- 코듀로이 (더블린 체어 치즈 · 딥그린) ----------------
+def cord(N=1024):
+    """코듀로이: 4 mm 간격 골(이랑)이 세로(v)로 길게. 0.2 m × 0.2 m 한 장.
+    색은 상품 색상 칩(치즈 #f1ae47, 딥그린 #4f6338)을 사이트 조명에 맞춰 한 단계 진하게"""
+    print('cord')
+    x = np.arange(N, dtype=np.float32)[None, :]
+    pitch = N * .004 / .2                                                 # 4 mm
+    s = np.abs(np.sin(np.pi * x / pitch))
+    rib = np.repeat(s ** .6, N, 0)                                        # 이랑 높이 (0 = 골)
+    pile = noise((N, N), (6, .5)) * .5 + noise((N, N), 30) * .5           # 털 결 얼룩
+    fibre = noise((N, N), (4, .35))                                       # 이랑 위 잔털
+    for name, base in (('cheese', '#f6b040'), ('green', '#617a45')):
+        col = hexlin(base) * (.64 + .42 * rib[..., None] + .05 * pile[..., None] + .04 * fibre[..., None] * rib[..., None])
+        save_rgb(to_srgb(col), f'cord_{name}_diff.png')
+    save_rgb(normal_from_height(.0016 * rib + .00004 * pile + .00002 * fibre, 1, .2 / N), 'cord_nor.png')
+
+
+# ---------------- 슬럽 직물 (싱겔 패브릭 체어 크림 · 차콜) ----------------
+def slub(N=1024):
+    """폴리에스터 평직: 0.8 mm 실이 가로·세로로 엇갈리고, 실 굵기가 고르지 않은(슬럽) 마디와 섞인 색 실이 보인다.
+    0.1 m × 0.1 m 한 장. 색은 상품 사진(크림 #e9e2d6, 차콜 #3d3f43)을 사이트 조명에 맞춤"""
+    print('slub')
+    y, x = np.mgrid[0:N, 0:N].astype(np.float32)
+    p = 8.0                                                               # 실 간격 0.8 mm
+    wx, wy = noise((N, N), (40, 2)) * 1.2, noise((N, N), (2, 40)) * 1.2  # 실이 살짝 굽음
+    cx, cy = np.floor((x + wx) / p), np.floor((y + wy) / p)
+    over = ((cx + cy) % 2).astype(np.float32)                             # 평직: 가로실·세로실이 번갈아 위로
+    fx, fy = ((x + wx) / p) % 1, ((y + wy) / p) % 1
+    weft = np.sin(np.pi * fy) ** .7 * (1 + .5 * np.clip(noise((N, N), (1.5, 60)), -1, 2))   # 가로실 + 슬럽 마디
+    warp = np.sin(np.pi * fx) ** .7 * (1 + .3 * np.clip(noise((N, N), (60, 1.5)), -1, 2))
+    h = over * weft + (1 - over) * warp
+    tone = noise((N // 8, N // 8), .6)                         # 실마다 다른 섞인 색
+    tone = np.asarray(Image.fromarray(tone).resize((N, N), Image.NEAREST))
+    fleck = (noise((N, N), (1.2, 25)) > 2.3).astype(np.float32)           # 밝은 색 실 마디
+    for name, base, fl in (('cream', '#f7f0e4', .06), ('charcoal', '#6f737a', .5)):
+        col = hexlin(base) * (.84 + .2 * h[..., None] + .05 * tone[..., None])
+        col = col * (1 - fleck[..., None] * fl * .5) + hexlin('#8a8a88') * fleck[..., None] * fl * .5
+        save_rgb(to_srgb(col), f'slub_{name}_diff.png')
+    save_rgb(normal_from_height(.00035 * h, 1, .1 / N), 'slub_nor.png')
+
+
 # ---------------- 헤어라인 메탈 (냉장고 문) ----------------
 def steel(W=1024, H=1024):
     """가로 헤어라인(브러시드) 은색 메탈. 0.3 m × 0.3 m 반복"""
@@ -181,6 +278,6 @@ def band(W=1024, H=768, width=.12, height=.09):
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple, steel):
+    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord, slub):
         if not only or f.__name__ in only: f()
     print('->', OUT)
