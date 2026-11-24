@@ -386,6 +386,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 (() => {
 'use strict';
@@ -1147,6 +1148,7 @@ function buildHouse(m) {
   }
   scene.add(house);
   applyLook();
+  if (typeof syncFloorReflect === 'function') syncFloorReflect();
 }
 
 /* 콘센트: 마루 방마다 벽 두 곳(문·창에서 떨어진 긴 벽면의 1/3 지점), 바닥에서 300mm */
@@ -1472,6 +1474,18 @@ const orbit = { tx: 0, tz: 0, r: 13, az: -0.5, pol: 0.62 };
 const keys = {};
 const joy = { x: 0, y: 0 };
 const EYE = 1.58;
+/* 세로선 보정 (건축 사진의 시프트 렌즈): 카메라는 수평을 유지하고 화면만 위아래로 민다 */
+const SHIFT_MAX = .42;
+let lensNow = null;
+function lensShift(a) {
+  if (lensNow === a && !camera.userData.projDirty) return;
+  lensNow = a; camera.userData.projDirty = false;
+  camera.updateProjectionMatrix();
+  if (a) {
+    camera.projectionMatrix.elements[9] += Math.tan(a) / Math.tan(camera.fov * Math.PI / 360);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  }
+}
 const raycaster = new THREE.Raycaster();
 
 function setMode(mode) {
@@ -1627,10 +1641,11 @@ function update(dt) {
   if (state.auto && state.auto.stuck > .4) state.auto = null;
 
   if (state.mode === 'walk') {
-    camera.position.set(me.x, EYE, me.z); camera.rotation.set(me.pitch, me.yaw, 0);
+    const sh = clamp(me.pitch, -SHIFT_MAX, SHIFT_MAX);   // 조금 들고 숙이는 건 렌즈를 밀어서 (벽 세로선이 기울지 않게), 그 이상만 고개를 꺾는다
+    camera.position.set(me.x, EYE, me.z); camera.rotation.set(me.pitch - sh, me.yaw, 0); lensShift(sh);
   } else {
     const t = orbit, cx = t.tx + Math.sin(t.az) * Math.sin(t.pol) * t.r, cz = t.tz + Math.cos(t.az) * Math.sin(t.pol) * t.r, cy = Math.cos(t.pol) * t.r;
-    camera.position.set(cx, cy, cz); camera.lookAt(t.tx, 0, t.tz);
+    camera.position.set(cx, cy, cz); camera.lookAt(t.tx, 0, t.tz); lensShift(0);
   }
   if (!selfAvatar) selfAvatar = makeAvatar(me.color, me.nick || '나');
   setAvatarLook(selfAvatar, me.color, (me.nick || '나'));
@@ -2100,7 +2115,7 @@ function applyLook() {
   const nb = $('#nightBtn2'); if (nb) nb.textContent = night ? '낮으로 보기' : '밤으로 보기';
   const cb = $('#ceilBtn'); if (cb) { cb.textContent = ceilOn ? '천장등 켜짐' : '천장등 꺼짐'; cb.setAttribute('aria-pressed', ceilOn); }
 }
-$('#btnNight').onclick = () => { night = !night; applyLook(); };
+$('#btnNight').onclick = () => { night = !night; applyLook(); syncFloorReflect(); };
 $('#btnBaked').onclick = () => { BAKED.want = !BAKED.want; store.set('vh.baked', BAKED.want); syncBaked(); };
 
 let hq = !isCoarse && store.get('vh.hq', true), composer = null, aoPass = null;
@@ -2127,9 +2142,59 @@ function setupComposer() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(canvas.clientWidth, canvas.clientHeight);
 }
+/* 바닥 반사: 마루·타일에 창빛과 가구가 은은하게 비친다 (고화질에서만, 비스듬히 볼수록 강하게, 살짝 흐리게) */
+var floorRef = null;
+const FLOOR_REFLECT_SHADER = {
+  name: 'FloorReflect',
+  uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, tMask: { value: null }, maskB: { value: new THREE.Vector4() }, texel: { value: new THREE.Vector2() } },
+  vertexShader: `uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vW;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() { vUv = textureMatrix * vec4(position, 1.0); vW = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tMask; uniform vec4 maskB; uniform vec2 texel; varying vec4 vUv; varying vec3 vW;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      vec2 uv = vUv.xy / vUv.w; vec3 c = vec3(0.0);
+      for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) c += texture2D(tDiffuse, uv + vec2(float(i), float(j)) * texel * 2.2).rgb;
+      c /= 25.0;
+      float m = texture2D(tMask, (vW.xz - maskB.xy) / (maskB.zw - maskB.xy)).r;
+      vec3 V = normalize(cameraPosition - vW);
+      float fr = .1 + .55 * pow(1.0 - clamp(V.y, 0.0, 1.0), 2.5);   // 비스듬히 볼수록 강하게 (프레넬)
+      gl_FragColor = vec4(c, fr * m);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+};
+function syncFloorReflect() {
+  if (floorRef) { scene.remove(floorRef); floorRef.dispose(); floorRef.material.uniforms.tMask.value?.dispose(); floorRef = null; }
+  if (!hq || !house || !bounds || night) return;
+  const w = bounds.x1 - bounds.x0, d = bounds.z1 - bounds.z0, size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const tw = Math.round(size.x / 2), th = Math.round(size.y / 2);
+  const mask = canvasTex(512, 512, (g, W0, H0) => {   // 반사할 바닥: 집 안 방만 (마루 진하게, 타일 조금 약하게)
+    g.fillStyle = '#000'; g.fillRect(0, 0, W0, H0);
+    for (const r of model.rooms) {
+      if (r.outside) continue;
+      const [ax, az] = W(r.x0, r.y0), [cx, cz] = W(r.x1, r.y1);
+      const u0 = (Math.min(ax, cx) - bounds.x0) / w, u1 = (Math.max(ax, cx) - bounds.x0) / w, v0 = (Math.min(az, cz) - bounds.z0) / d, v1 = (Math.max(az, cz) - bounds.z0) / d;
+      g.fillStyle = r.floor === 'wood' ? '#ffffff' : '#a0a0a0';
+      g.fillRect(u0 * W0, (1 - v1) * H0, (u1 - u0) * W0, (v1 - v0) * H0);
+    }
+  }, false);
+  floorRef = new Reflector(new THREE.PlaneGeometry(w, d), { textureWidth: tw, textureHeight: th, clipBias: .003, shader: FLOOR_REFLECT_SHADER });
+  const u = floorRef.material.uniforms;
+  u.tMask.value = mask; u.maskB.value.set(bounds.x0, bounds.z0, bounds.x1, bounds.z1); u.texel.value.set(1 / tw, 1 / th);
+  Object.assign(floorRef.material, { transparent: true, depthWrite: false });
+  floorRef.rotation.x = -Math.PI / 2; floorRef.position.set((bounds.x0 + bounds.x1) / 2, .0025, (bounds.z0 + bounds.z1) / 2);
+  floorRef.userData.noAO = true; floorRef.raycast = () => {}; floorRef.renderOrder = 2;
+  scene.add(floorRef);
+}
 function setHQ(on) {
   hq = on; store.set('vh.hq', on);
   if (on) setupComposer();
+  if (typeof syncFloorReflect === 'function') syncFloorReflect();
   $('#btnHQ').setAttribute('aria-pressed', on);
 }
 $('#btnHQ').onclick = () => setHQ(!hq);
@@ -2140,7 +2205,7 @@ function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h);
   if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
-  camera.fov = w < h ? 80 : 70; camera.updateProjectionMatrix();
+  camera.fov = w < h ? 80 : 70; camera.updateProjectionMatrix(); camera.userData.projDirty = true;
 }
 addEventListener('resize', resize);
 let prev = performance.now(), miniT = 0;
@@ -2288,10 +2353,10 @@ const NOBLOCK = { rug: 1, pendant: 1 };
    가구에 m(모델 이름)이 있으면 모양(s)으로 먼저 그려 두고, 모델을 받는 대로 바꿔 끼운다 */
 const feet4 = (x, z) => [[-x, -z], [x, -z], [-x, z], [x, z]];
 const MODELS = {
-  'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460 },   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
-  'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480 },     // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
-  'clawind-302': { url: 'models/fridge_clawind_302.glb', v: 1, w: 595, d: 630, h: 1880 },           // 캐리어 클라윈드 피트인 302L KRNC302SEI1 (실버)
-  'carrier-312w': { url: 'models/fridge_carrier_312w.glb', v: 1, w: 595, d: 635, h: 1855 },         // 캐리어 312L 2도어 콤비 KRNC312WPM1 (화이트)
+  'lowb-velluce-k': { url: 'models/bed_lowb_velluce_k.glb', v: 4, w: 1800, d: 2100, h: 460, under: .5 },   // 삼익 로우브 평상형 LK(오크) + 에이스 벨루체 K
+  'louis-850-maple': { url: 'models/head_louis_850_maple.glb', v: 1, w: 850, d: 150, h: 480, under: .45 },     // 우드레이 루이 저상형 침대헤드 겸 틈새수납장 850 (메이플). 앞 = 침대 쪽
+  'clawind-302': { url: 'models/fridge_clawind_302.glb', v: 1, w: 595, d: 630, h: 1880, under: .55 },           // 캐리어 클라윈드 피트인 302L KRNC302SEI1 (실버)
+  'carrier-312w': { url: 'models/fridge_carrier_312w.glb', v: 1, w: 595, d: 635, h: 1855, under: .55 },         // 캐리어 312L 2도어 콤비 KRNC312WPM1 (화이트)
   'fore-1200': { url: 'models/table_fore_1200.glb', v: 2, w: 1200, d: 750, h: 760, feet: feet4(.564, .331), under: .16 },   // 한샘 포레 원목 4인 식탁
   'bome-1200': { url: 'models/table_bome_1200.glb', v: 3, w: 1200, d: 700, h: 740, feet: feet4(.555, .29), under: .16 },     // 룸앤홈 보메 원목 식탁 1200 (화이트)
   'dublin-cheese': { url: 'models/chair_dublin_cheese.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },   // 룸앤홈 더블린 체어 치즈 코듀로이
@@ -2315,7 +2380,8 @@ const MAT_LOOK = [
 ];
 function lookMaterial(m) {
   const r = MAT_LOOK.find(([re]) => re.test((m.name || '').replace(/\.\d{3}$/, '')));
-  if (!r || !m.isMeshStandardMaterial) return m;
+  if (!m.isMeshStandardMaterial) return m;
+  if (!r) { m.userData.probe = .9; return m; }   // 정해진 성격이 없는 재질도 방의 빛(탐침)은 받는다: 창 쪽은 밝고 반대쪽은 어둡게
   const L = r[1], p = new THREE.MeshPhysicalMaterial();
   THREE.MeshStandardMaterial.prototype.copy.call(p, m);
   p.defines = { STANDARD: '', PHYSICAL: '' };
