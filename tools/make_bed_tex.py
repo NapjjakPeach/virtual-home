@@ -89,6 +89,26 @@ def maple(W=1024, H=1024):
     save_rgb(normal_from_height(.00003 * fine, 1, .5 / W), 'maple_nor.png')
 
 
+# ---------------- 원목 (한샘 포레 식탁) ----------------
+def fore(W=1024, H=2048):
+    """포레 식탁 원목: 오크보다 따뜻한 꿀색, 결이 길고 물관이 얕다. 0.5 m × 1.0 m, 결은 세로(v) 방향 (상품 사진 색)"""
+    print('fore')
+    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
+    warp = np.asarray(Image.fromarray(noise((H // 8, W // 8), 6, False)).resize((W, H), Image.BICUBIC))
+    u = x + warp * 30 + 10 * np.sin(y / H * 2 * np.pi * 1.3)
+    rings = np.sin(u / W * 2 * np.pi * 7)
+    fine = noise((H, W), (45, 1.1))
+    pores = (noise((H, W), (5, .6)) > 2.2).astype(np.float32)
+    t = .45 * rings + .4 * fine
+    t = (t - t.min()) / (t.max() - t.min())
+    # 사이트에서 가구는 고른 채움빛 + 노출 1.5로 보이므로 사진보다 한 단계 진하게 (화면에서 상품 사진 색이 되도록)
+    light, dark = hexlin('#b97c45'), hexlin('#7f4c22')
+    col = light * (1 - t[..., None] * .62) + dark * (t[..., None] * .62)
+    col *= (1 - .14 * pores)[..., None]
+    save_rgb(to_srgb(col), 'fore_diff.png')
+    save_rgb(normal_from_height(-.0001 * pores + .00003 * fine, 1, .5 / W), 'fore_nor.png')
+
+
 # ---------------- 헤어라인 메탈 (냉장고 문) ----------------
 def steel(W=1024, H=1024):
     """가로 헤어라인(브러시드) 은색 메탈. 0.3 m × 0.3 m 반복"""
@@ -181,6 +201,6 @@ def band(W=1024, H=768, width=.12, height=.09):
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple, steel):
+    for f in (oak, quilt, wave, band, maple, steel, fore):
         if not only or f.__name__ in only: f()
     print('->', OUT)
