@@ -86,7 +86,8 @@
     { "name": "펜던트 조명", "ref": [0, 2], "x": 2383, "y": 1114, "w": 300, "d": 300, "h": 0, "z": 1650, "color": "#1f1f1f", "kind": "pendant" }
   ],
   "furniture": [
-    { "id": "bed0room2", "n": "침대", "w": 1800, "d": 2100, "h": 460, "s": "platbed", "m": "lowb-velluce-k", "c": "#e9e3d9", "px": 8617, "py": 8590, "rot": -90, "t": 4 },
+    { "id": "bed0room2", "n": "침대", "w": 1800, "d": 2100, "h": 460, "s": "platbed", "m": "lowb-velluce-k", "c": "#e9e3d9", "px": 8510, "py": 8590, "rot": -90, "t": 5 },
+    { "id": "head0room2", "n": "헤드 수납장", "w": 1800, "d": 150, "h": 800, "s": "box", "m": "between800-w", "c": "#f2f1ee", "px": 9630, "py": 8590, "rot": -90, "t": 1 },
     { "id": "aircon0living", "n": "스탠드 에어컨", "w": 350, "d": 300, "h": 1800, "s": "aircon", "c": "#f4f4f1", "px": 2433, "py": 3615, "rot": 90 },
     { "id": "fridge0kitchen", "n": "냉장고", "w": 595, "d": 635, "h": 1855, "s": "fridge", "m": "carrier-312w", "c": "#f3f2ef", "px": 2117, "py": 4535, "rot": 180, "t": 3 },
     { "id": "table0kitchen", "n": "식탁", "w": 1200, "d": 700, "h": 740, "s": "table", "m": "bome-1200", "c": "#e9e8e3", "px": 3666, "py": 4815, "rot": 90, "t": 2 },
