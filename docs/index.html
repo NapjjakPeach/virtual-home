@@ -2552,7 +2552,7 @@ function cleanItem(o) {
     const dim = v => Math.round(clamp(Number(v) || 0, 10, 6000));
     const f = { id: o.id, k: 'f', n: str(o.n, 20) || '가구', w: Math.max(50, dim(o.w)), d: Math.max(50, dim(o.d)), h: dim(o.h), x: num(o.x, 40), z: num(o.z, 40), r: num(o.r, 7), c: okColor(o.c), s: SHAPES[o.s] ? o.s : 'box', o: o2, t: o.t, by: str(o.by, 12) };
     if (LAMPS[f.s]) { f.on = o.on === 0 || o.on === false ? 0 : 1; f.lc = LC[o.lc] ? o.lc : 'warm'; }
-    if (typeof o.m === 'string' && MODELS[o.m]) f.m = o.m;
+    if (typeof o.m === 'string' && /^[a-z0-9-]{1,40}$/.test(o.m)) f.m = o.m;   // 모르는 모델 이름도 지우지 않고 지닌다 (예전 페이지가 새 모델을 떼어 내지 않게). 그리기는 MODELS에 있을 때만
     return f;
   }
   if (o.k === 'p') return { id: o.id, k: 'p', n: str(o.n, 80), x: num(o.x, 40), y: clamp(num(o.y, 10), 0, 4), z: num(o.z, 40), done: !!o.done, o: o2, t: o.t, by: str(o.by, 12) };
@@ -2563,6 +2563,8 @@ let saveTimer = 0;
 const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveBoard, 400); };
 function applyRemote(it) {
   const cur = board.items.get(it.id);
+  // 예전 페이지가 모르는 모델 이름(m)을 떼어 내고 다시 올린 사본: 크기·모양이 같으면 모델은 내 것을 이어 쓴다
+  if (cur && cur.m && !it.m && !it.del && !cur.del && it.s === cur.s && it.w === cur.w && it.d === cur.d && it.h === cur.h) it = Object.assign({}, it, { m: cur.m });
   if (cur && cur.t > it.t) return;
   if (cur && cur.t === it.t) {   // 같은 시각인데 내용이 다르면: 예전 페이지가 모르는 칸(m 등)을 빼고 저장한 사본일 수 있다
     const a = JSON.stringify(cur), b = JSON.stringify(it);
