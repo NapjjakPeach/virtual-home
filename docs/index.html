@@ -487,8 +487,9 @@ const DEFAULT_PLAN = {
   // 처음 들어온 사람에게 기본으로 놓이는 가구 (끌어서 옮기거나 지울 수 있음, 위치는 도면 mm)
   // t: 기본값 판 번호. 올리면 아무도 손대지 않은 기본 가구가 새 값으로 바뀐다 (누가 옮긴 건 그대로)
   furniture: [
-    { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 460, s: 'platbed', m: 'lowb-velluce-k', c: '#e9e3d9', px: 8510, py: 8590, rot: -90, t: 5 },
-    { id: 'head0room2', n: '헤드 수납장', w: 1800, d: 150, h: 800, s: 'box', m: 'between800-w', c: '#f2f1ee', px: 9630, py: 8590, rot: -90, t: 1 },   // 침대 머리와 벽 사이 (라샘 높은 비트윈800 3P 화이트)   // 삼익 로우브 평상형 LK(1800×2100×100) + ACE 벨루체 K 매트리스(1670×2075×360)
+    { id: 'bed0room2', n: '침대', w: 1800, d: 2100, h: 460, s: 'platbed', m: 'lowb-velluce-k', c: '#e9e3d9', px: 8605, py: 8590, rot: -90, t: 6 },
+    { id: 'tolka0room2', n: '헤드보드', w: 1000, d: 42, h: 960, s: 'box', m: 'tolkning', c: '#c99a5e', px: 9681, py: 8090, rot: -90, t: 1 },   // 이케아 톨크닝 2개를 침대 가운데에 맞춰 벽에 기대 세움
+    { id: 'tolkb0room2', n: '헤드보드', w: 1000, d: 42, h: 960, s: 'box', m: 'tolkning', c: '#c99a5e', px: 9681, py: 9090, rot: -90, t: 1 },   // 삼익 로우브 평상형 LK(1800×2100×100) + ACE 벨루체 K 매트리스(1670×2075×360)
     { id: 'aircon0living', n: '스탠드 에어컨', w: 350, d: 300, h: 1800, s: 'aircon', c: '#f4f4f1', px: 2433, py: 3615, rot: 90 },
     { id: 'fridge0kitchen', n: '냉장고', w: 595, d: 635, h: 1855, s: 'fridge', m: 'carrier-312w', c: '#f3f2ef', px: 2117, py: 4535, rot: 180, t: 3 },
     { id: 'table0kitchen', n: '식탁', w: 1200, d: 700, h: 740, s: 'table', m: 'bome-1200', c: '#e9e8e3', px: 3666, py: 4815, rot: 90, t: 2 },   // 도면 식탁 자리: 남쪽 벽에 붙여 세로로, 펜던트 아래
@@ -2364,6 +2365,7 @@ const MODELS = {
   'dublin-cheese': { url: 'models/chair_dublin_cheese.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },   // 룸앤홈 더블린 체어 치즈 코듀로이
   'dublin-green': { url: 'models/chair_dublin_green.glb', v: 3, w: 500, d: 495, h: 801, feet: [[-.19, .218], [.19, .218], [-.19, -.237], [.19, -.237]], under: .3 },     // 룸앤홈 더블린 체어 딥그린 코듀로이
   'singel-cream': { url: 'models/chair_singel_cream.glb', v: 3, w: 451, d: 560, h: 782, feet: [[-.214, .269], [.214, .269], [-.214, -.268], [.214, -.268]], under: .3 },        // 룸앤홈 싱겔 패브릭 체어 크림
+  'tolkning': { url: 'models/headboard_tolkning.glb', v: 2, w: 1000, d: 42, h: 960, feet: [[-.27, -.012], [.27, -.012]] },   // 이케아 TOLKNING 톨크닝 침대헤드 (라탄). 앞 = 침대 쪽
   'between800-w': { url: 'models/head_between800_white.glb', v: 1, w: 1800, d: 150, h: 800, under: .3 },   // 라샘 높은 비트윈800 3P (일반2+도어1) IH21119 화이트. 앞(열린 칸·문) = 침대 쪽
   'singel-charcoal': { url: 'models/chair_singel_charcoal.glb', v: 3, w: 451, d: 560, h: 782, feet: [[-.214, .269], [.214, .269], [-.214, -.268], [.214, -.268]], under: .3 }   // 룸앤홈 싱겔 패브릭 체어 차콜
 };
@@ -2371,6 +2373,8 @@ const MODELS = {
    크롬은 방을 거울처럼 비추고(반사 탐침), 코듀로이는 털 결 광택(sheen), 원목·HPM은 얇은 코팅(clearcoat) */
 const MAT_LOOK = [
   [/^chrome/, { metalness: 1, roughness: .06, probe: 1 }],
+  [/^rattan_wrap/, { roughness: .5, clearcoat: .15, clearcoatRoughness: .4, probe: .6 }],              // 감은 등나무 껍질 (살짝 윤기)
+  [/^rattan_lattice/, { roughness: .6, probe: .45 }],
   [/^lpm_white/, { roughness: .38, clearcoat: .2, clearcoatRoughness: .3, probe: .7 }],              // 화이트 LPM 판
   [/^foot_brass/, { metalness: .85, roughness: .3, probe: 1 }],
   [/^black_steel/, { metalness: .45, roughness: .36, clearcoat: .3, clearcoatRoughness: .3, probe: .8 }],   // 무광 검정 분체도장

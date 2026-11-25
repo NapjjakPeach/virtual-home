@@ -275,9 +275,68 @@ def band(W=1024, H=768, width=.12, height=.09):
     save_rgb(normal_from_height(gaussian_filter(h, .8, mode='wrap'), 1, width / W), 'band_nor.png')
 
 
+# ---------------- 라탄 (이케아 톨크닝 침대헤드) ----------------
+RATTAN_L, RATTAN_D = '#d6a865', '#a8763c'   # 꿀색 라탄 (사이트 조명에서 사진 색이 되도록 한 단계 진하게)
+
+
+def rattan():
+    """lattice: 납작한 등나무 띠(폭 13 mm)가 대각선으로 엮인 마름모 격자, 구멍은 투명(알파). 0.2 m × 0.2 m 한 장.
+    wrap: 기둥에 감은 등나무 껍질 띠(폭 약 6 mm), u = 기둥 길이 방향. 0.05 m 한 장"""
+    print('rattan')
+    N = 1024
+    y, x = np.mgrid[0:N, 0:N].astype(np.float32)
+    s = N / 5                                     # 같은 방향 띠 사이 (가로 방향) 간격 → 수직 간격 ≈ 28 mm
+    w = 66 / 2                                    # 띠 반폭 (띠 폭 13 mm, 구멍과 비슷하게)
+    a, b = (x + y) % s, (x - y) % s               # 두 방향 띠까지 거리 (대각선 좌표)
+    da, db = np.minimum(a, s - a) / np.sqrt(2) * np.sqrt(2), np.minimum(b, s - b)
+    da = np.minimum(a, s - a) / np.sqrt(2); db = np.minimum(b, s - b) / np.sqrt(2)
+    ia, ib = da < w, db < w
+    ka, kb = np.floor((x + y) / s), np.floor((x - y) / s)
+    a_top = ((ka + kb) % 2 == 0)                  # 엇갈려 엮기: 교차점마다 위로 오는 띠가 번갈아
+    fibre_a = noise((N, N), (1.2, 1.2)) * .5 + noise((N, N), 6) * .5
+    t = np.zeros((N, N), np.float32); h = np.zeros((N, N), np.float32)
+    # 띠 단면: 가운데 볼록, 가장자리 어둡게. 결은 띠 방향으로 길게
+    prof_a = np.cos(np.clip(da / w, 0, 1) * np.pi / 2) ** .6
+    prof_b = np.cos(np.clip(db / w, 0, 1) * np.pi / 2) ** .6
+    streak = norm(gaussian_filter(rng.standard_normal((N, N)).astype(np.float32), (0, 0)))
+    sa = gaussian_filter(streak, (6, 6)) * 0 + noise((N, N), (8, 8)) * .3
+    show_a = ia & (~ib | a_top); show_b = ib & (~ia | ~a_top)
+    t[show_a] = (.55 + .45 * prof_a)[show_a]; t[show_b] = (.55 + .45 * prof_b)[show_b]
+    under = (ia & ib)                              # 교차점: 아래 띠는 그늘
+    tone = .5 + .5 * noise((N // 16, N // 16), 1.5)
+    tone = np.asarray(Image.fromarray(tone.astype(np.float32)).resize((N, N), Image.BICUBIC))
+    light, dark = hexlin(RATTAN_L), hexlin(RATTAN_D)
+    k = np.clip(.35 + .4 * tone + .15 * fibre_a, 0, 1)
+    col = light * (1 - k[..., None]) + dark * k[..., None]
+    col *= t[..., None]
+    # 교차점에서 위 띠 가장자리 아래로 생기는 그늘
+    edge = (ia & ib) & (((da > w * .7) & a_top) | ((db > w * .7) & ~a_top))
+    col[edge] *= .7
+    alpha = (ia | ib).astype(np.float32)
+    alpha = gaussian_filter(alpha, .6, mode='wrap')
+    rgba = np.dstack([to_srgb(col), alpha])
+    Image.fromarray((np.clip(rgba, 0, 1) * 255 + .5).astype(np.uint8), 'RGBA').save(os.path.join(OUT, 'rattan_lattice.png'))
+    h = np.where(show_a, prof_a, 0) + np.where(show_b, prof_b, 0) + .4 * ((ia & ib) & (show_a ^ show_b))
+    save_rgb(normal_from_height(.0015 * gaussian_filter(h.astype(np.float32), 1, mode='wrap'), 1, .2 / N), 'rattan_lattice_nor.png')
+    print('   rattan_lattice.png', N, 'x', N)
+    # 감은 띠: u 방향(기둥 길이)으로 폭 6 mm 띠가 살짝 비스듬히, 띠마다 색이 조금씩
+    W, H = 512, 128
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    pitch = W / 8.3
+    u = xx + yy * .35                              # 살짝 나선
+    ph = (u % pitch) / pitch
+    band = np.sin(np.pi * ph) ** .5
+    idx = np.floor(u / pitch)
+    btone = (np.sin(idx * 12.9898) * 43758.5453) % 1
+    k = np.clip(.25 + .45 * btone + .2 * noise((H, W), (.8, 6)), 0, 1)
+    col = (light * (1 - k[..., None]) + dark * k[..., None]) * (.6 + .4 * band[..., None])
+    save_rgb(to_srgb(col), 'rattan_wrap.png')
+    save_rgb(normal_from_height(.0012 * band, 1, .05 / W), 'rattan_wrap_nor.png')
+
+
 if __name__ == '__main__':
     import sys
     only = sys.argv[1:]   # 예: python tools/make_bed_tex.py maple
-    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord, slub):
+    for f in (oak, quilt, wave, band, maple, steel, fore, rubber, ply, cord, slub, rattan):
         if not only or f.__name__ in only: f()
     print('->', OUT)
